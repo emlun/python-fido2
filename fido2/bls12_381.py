@@ -75,8 +75,8 @@ def product(it, start=1):
     return reduce(lambda a, b: a*b, it, start)
 
 
-def find_element_order(element, group_order: int):
-    factors = factorize(group_order)
+def find_element_order(element, group_order: int | list[int]):
+    factors = factorize(group_order) if isinstance(group_order, int) else group_order
     o = product(factors)
     for f in factors:
         oo = o // f
@@ -1232,10 +1232,11 @@ def miller_weil_pairing(P: PointAffine, Q: PointAffine) -> Polynomial:
     return frp_dq / wr_denominator
 
 
-def opt_ate_pairing(P: PointProjective, Q: PointProjective, c: list[-1 | 0 | 1], k: int, untwist) -> Polynomial:
+def opt_ate_pairing(P: PointProjective, Q: PointProjective, c: list[-1 | 0 | 1], t: int, k: int, untwist) -> Polynomial:
     assert isinstance(P, PointProjective)
     assert isinstance(Q, PointProjective)
     assert all(ci in [-1, 0, 1] for ci in c), c
+    assert sum(ci * 2**i for i, ci in enumerate(c)) == t
     assert P.crv.n == Q.crv.n
     p = P.crv.field.characteristic()
     r = P.crv.n
@@ -1248,16 +1249,17 @@ def opt_ate_pairing(P: PointProjective, Q: PointProjective, c: list[-1 | 0 | 1],
     if c[-1] == -1:
         T = -T
     for i in reversed(range(len(c))):
-        f = f**2 * line_function(untwist(T.to_affine()), untwist(T.to_affine()), Paff)
+        print(i)
+        f = f**2 * line_function(T.to_affine(), T.to_affine(), Paff)
         T = T + T
         if c[i] == 1:
-            f = f * line_function(untwist(T.to_affine()), untwist(Qaff), Paff)
+            f = f * line_function(T.to_affine(), Qaff, Paff)
             T = T + Q
         elif c[i] == -1:
-            f = f * line_function(untwist(T.to_affine()), untwist(-Qaff), Paff)
+            f = f * line_function(T.to_affine(), -Qaff, Paff)
             T = T - Q
     quot, rem = divmod(p**k - 1, r)
-    # print(p, r, p**k - 1, quot, rem)
+    print(p, r, p**k - 1, quot, rem)
     assert rem == 0
     f = f**quot
     return f

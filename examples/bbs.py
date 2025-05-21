@@ -78,46 +78,6 @@ for i in range(crv.n+1):
     # return crv
 
 
-# g1 = CRV_BLS.generator
-# # g2 = CRV_BLS_G2.generator
-
-# # gfp2 = ExtensionField(CRV_BLS.field, [1, 0, 1])
-# # gfp6 = ExtensionField(gfp2, [-gfp2.monoup(1) - gfp2.monoup(0), gfp2.zero(), gfp2.zero(), gfp2.one()])
-# # gfp12 = ExtensionField(gfp6, [-gfp6.monoup(1), gfp6.zero(), gfp6.one()])
-
-# for f in [gfp2, gfp6, gfp12]:
-#     for d in range(f.modulus.degree() + 1):
-#         x = ef.mono(d)
-#         xe = x**(f.size()-2)
-#         assert d == 0 or xe != f.one(), (d, x, xe, f)
-#         xe *= x
-#         assert xe == f.one()
-#         assert xe * x == x
-
-
-# CRV_BLS_G2, twist, untwist = CRV_BLS.twist(generator=(
-#     gfp12.mono(0)*0x024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8
-#     + gfp12.mono(1)*0x13e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e,
-#     gfp12.mono(0)*0x0ce5d527727d6e118cc9cdc6da2e351aadfd9baa8cbdd3a76d429a695160d12c923ac9cc3baca289e193548608b82801
-#     + gfp12.mono(1)*0x0606c4a02ea734cc32acd2b02bc28b99cb3e287e85a763af267492ab572e99ab3f370d275cec1da1aaa9075ff05f79be
-# ))
-
-# P = CRV_BLS.generator
-# # Q = untwist(CRV_BLS_G2.generator.to_affine()).to_projective()
-# Q = CRV_BLS_G2.generator
-
-# # c = t = -2^63 - 2^62 - 2^60 - 2^57 - 2^48 - 2^16
-# c = [0] * 64
-# c[63] = -1
-# c[62] = -1
-# c[60] = -1
-# c[57] = -1
-# c[48] = -1
-# c[16] = -1
-# k = 12
-# e = opt_ate_pairing(P, Q, c, k, untwist)
-# print(e)
-# print(e.to_bytes().hex())
 
 fq = PrimeField(97)
 alpha = 5
@@ -128,8 +88,6 @@ fq6 = ExtensionField(fq2, fq2.monoup(3) - fq2.mono(1) * fq2.monoup(0))
 fq12 = ExtensionField(fq6, fq6.monoup(2) - fq6.mono(1) * fq6.monoup(0))
                       # [-fq6.mono(1), fq6.zero(), fq6.one()])
 fq12d = ExtensionField(fq, fq.monoup(12) - alpha * fq.monoup(0))
-
-
 
 
 # Example 5.0.1
@@ -273,3 +231,50 @@ assert wr_denominator == fq4.el([40, 6, 2])
 wr = frp_dq / wr_denominator
 assert wr == fq4.el([13, 32, 12, 22])
 assert miller_weil_pairing(P, Q) == fq4.el([13, 32, 12, 22])
+
+
+
+
+# g1 = CRV_BLS.generator
+# g2 = CRV_BLS_G2.generator
+
+# gfp2 = ExtensionField(CRV_BLS.field, [1, 0, 1])
+# gfp6 = ExtensionField(gfp2, [-gfp2.monoup(1) - gfp2.monoup(0), gfp2.zero(), gfp2.zero(), gfp2.one()])
+# gfp12 = ExtensionField(gfp6, [-gfp6.monoup(1), gfp6.zero(), gfp6.one()])
+
+# for f in [gfp2, gfp6, gfp12]:
+#     for d in range(f.modulus.degree() + 1):
+#         x = ef.mono(d)
+#         xe = x**(f.size()-2)
+#         assert d == 0 or xe != f.one(), (d, x, xe, f)
+#         xe *= x
+#         assert xe == f.one()
+#         assert xe * x == x
+
+
+CRV_BLS_G2, twist, untwist = CRV_BLS.twist(generator=(
+    gfp12.mono(0)*0x024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8
+    + gfp12.mono(1)*0x13e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e,
+    gfp12.mono(0)*0x0ce5d527727d6e118cc9cdc6da2e351aadfd9baa8cbdd3a76d429a695160d12c923ac9cc3baca289e193548608b82801
+    + gfp12.mono(1)*0x0606c4a02ea734cc32acd2b02bc28b99cb3e287e85a763af267492ab572e99ab3f370d275cec1da1aaa9075ff05f79be
+))
+
+P = CRV_BLS.generator
+# Q = untwist(CRV_BLS_G2.generator.to_affine()).to_projective()
+Q = CRV_BLS_G2.generator
+
+# c = t = -2^63 - 2^62 - 2^60 - 2^57 - 2^48 - 2^16
+t = -2**63 - 2**62 - 2**60 - 2**57 - 2**48 - 2**16
+c = [0] * 64
+c[63] = -1
+c[62] = -1
+c[60] = -1
+c[57] = -1
+c[48] = -1
+c[16] = -1
+k = 12
+# e = opt_ate_pairing(P, Q, c, t, k, untwist)
+# print(e)
+# print(e.to_bytes().hex())
+
+Qu = untwist(Q.to_affine())
