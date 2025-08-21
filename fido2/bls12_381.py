@@ -574,14 +574,13 @@ class Curve:
         def untwist_xy(xp: int | Polynomial, yp: int | Polynomial) -> (Polynomial, Polynomial):
             return (xp / crv.field.mono(2), yp / crv.field.mono(3))
 
-        g = crv.generator.to_affine()
         tcrv = Curve(
             field=crv.field,
             a=crv.a * crv.field.mono(4),
             b=crv.b * crv.field.mono(6),
             n=crv.n,
             h=crv.h,
-            generator=generator or twist_xy(g.x, g.y),
+            generator=generator,
         )
 
         def twist_point(p: PointAffine) -> PointAffine:
@@ -1174,6 +1173,8 @@ def miller_eval(P: PointAffine, DQ: (list[PointAffine], list[PointAffine])) -> P
     R = P
     f = 1
     for i in reversed(range(n - 2 + 1)):
+        print(i)
+
         assert not R.is_zero(), (i, r, P, DQ)
         # print(i, R)
 
@@ -1295,8 +1296,8 @@ CRV_BLS_G1 = Curve(
 )
 CRV_BLS_G2 = Curve(
     field=gfp2,
-    a=gfp12.zero(),
-    b=4 * (gfp12.mono(1) + gfp12.mono(0)),
+    a=gfp2.zero(),
+    b=4 * (gfp2.mono(1) + gfp2.mono(0)),
     n=r,
     h=h,
     generator=(

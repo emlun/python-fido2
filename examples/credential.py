@@ -35,6 +35,7 @@ On Windows, the native WebAuthn API will be used.
 from exampleutils import get_client
 
 from fido2.server import Fido2Server
+from fido2.webauthn import PublicKeyCredentialCreationOptions
 
 # Locate a suitable FIDO authenticator
 client, info = get_client()
@@ -58,8 +59,15 @@ create_options, state = server.register_begin(
     user, user_verification=uv, authenticator_attachment="cross-platform"
 )
 
+print(create_options)
+options = PublicKeyCredentialCreationOptions.from_dict({
+    **create_options["publicKey"],
+    "pubKeyCredParams": [{"type": "public-key", "alg": -65600}]
+})
+print(options)
+
 # Create a credential
-result = client.make_credential(create_options["publicKey"])
+result = client.make_credential(options)
 
 # Complete registration
 auth_data = server.register_complete(state, result)
