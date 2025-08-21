@@ -252,7 +252,7 @@ assert miller_weil_pairing(P, Q) == fq4.el([13, 32, 12, 22])
 #         assert xe * x == x
 
 
-CRV_BLS_G2, twist, untwist = CRV_BLS.twist(generator=(
+CRV_BLS_G2_TW, twist, untwist = CRV_BLS_G2.twist(generator=(
     gfp12.mono(0)*0x024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8
     + gfp12.mono(1)*0x13e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e,
     gfp12.mono(0)*0x0ce5d527727d6e118cc9cdc6da2e351aadfd9baa8cbdd3a76d429a695160d12c923ac9cc3baca289e193548608b82801
@@ -261,7 +261,7 @@ CRV_BLS_G2, twist, untwist = CRV_BLS.twist(generator=(
 
 P = CRV_BLS.generator
 # Q = untwist(CRV_BLS_G2.generator.to_affine()).to_projective()
-Q = CRV_BLS_G2.generator
+Q = CRV_BLS_G2_TW.generator
 
 # c = t = -2^63 - 2^62 - 2^60 - 2^57 - 2^48 - 2^16
 t = -2**63 - 2**62 - 2**60 - 2**57 - 2**48 - 2**16
