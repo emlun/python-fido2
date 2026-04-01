@@ -348,6 +348,18 @@ class EcsdsaBls12_381_Sha256(CoseKey):
         pk.verify_ecsdsa_sha256(signature, message)
 
 
+class EcsdsaBls12_381_Sha256_Prehash(CoseKey):
+    ALGORITHM = -65603  # Placeholder value
+    CURVE_BLS12_381 = EcsdsaBls12_381_Sha256.CURVE_BLS12_381
+
+    def verify(self, message, signature):
+        if self[-1] != self.CURVE_BLS12_381:
+            raise ValueError("Unsupported elliptic curve")
+
+        pk = bls12_381.CRV_BLS.point_from_cose(self)
+        pk.verify_ecsdsa_sha256(signature, message)
+
+
 class RS1(CoseKey):
     ALGORITHM = -65535
     _HASH_ALG = hashes.SHA1()  # noqa: S303

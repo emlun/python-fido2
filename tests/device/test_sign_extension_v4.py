@@ -38,6 +38,9 @@ ALL_ALGORITHMS = [
     -9,  # ESP256
     -7,  # ES256
     -300,  # Requested assignment for ESP256-split https://www.ietf.org/archive/id/draft-lundberg-cose-two-party-signing-algs-06.html#name-ecdsa
+    -65600,  # Placeholder value for Ecsdsa-Bls12-381-Sha256, no spec yet
+    -65603,  # Placeholder value for Ecsdsa-Bls12-381-Sha256-prehashed, no spec yet
+    -65604,  # Placeholder value for Ecsdsa-Bls12-381-Sha256-prehashed-split, no spec yet
     -70009,  # Placeholder value for ESP256-split used by some prototypes
     ESP256_SPLIT_ARKG_PLACEHOLDER,  # Placeholder for ESP256-split-ARKG https://www.ietf.org/archive/id/draft-bradleylundberg-cfrg-arkg-10.html#name-cose-algorithms
 ]
@@ -45,6 +48,7 @@ PREHASH_ALGS = [
     ESP256_SPLIT_ARKG_PLACEHOLDER,
     -300,
     -70009,  # Placeholder value for ESP256-split used by some prototypes
+    -65604,  # Placeholder value for Ecsdsa-Bls12-381-Sha256-prehashed-split, no spec yet
 ]
 
 
@@ -333,6 +337,51 @@ def test_esp256_split_arkg(credential_cache, sign):
 
     assert signature is not None
     public_key.verify(tbs, signature)
+
+
+def test_ecsdsa_bls12_381_sha256(credential_cache, sign):
+    algorithms = [-65600]
+    cred = credential_cache.make_cred_or_skip(
+        lambda cred: cred.algorithm in algorithms and cred.flags == 0b000,
+        algorithms,
+    )
+    assert cred.algorithm in algorithms
+
+    tbs = os.urandom(32)
+    response, signature = sign(cred, tbs)
+
+    assert signature is not None
+    cred.public_key.verify(tbs, signature)
+
+
+def test_ecsdsa_bls12_381_sha256_prehash(credential_cache, sign):
+    algorithms = [-65603]
+    cred = credential_cache.make_cred_or_skip(
+        lambda cred: cred.algorithm in algorithms and cred.flags == 0b000,
+        algorithms,
+    )
+    assert cred.algorithm in algorithms
+
+    tbs = os.urandom(32)
+    response, signature = sign(cred, tbs)
+
+    assert signature is not None
+    cred.public_key.verify(sha256(tbs), signature)
+
+
+def test_ecsdsa_bls12_381_sha256_prehash_split(credential_cache, sign):
+    algorithms = [-65604]
+    cred = credential_cache.make_cred_or_skip(
+        lambda cred: cred.algorithm in algorithms and cred.flags == 0b000,
+        algorithms,
+    )
+    assert cred.algorithm in algorithms
+
+    tbs = os.urandom(32)
+    response, signature = sign(cred, tbs)
+
+    assert signature is not None
+    cred.public_key.verify(sha256(tbs), signature)
 
 
 def test_two_keys_same_alg(credential_cache, sign):
