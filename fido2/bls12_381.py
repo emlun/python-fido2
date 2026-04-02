@@ -2,9 +2,11 @@
 
 import math
 import os
+from typing import Any, Optional
 
 from cryptography.exceptions import InvalidSignature
 
+from . import cbor
 from .utils import sha256
 
 
@@ -335,6 +337,228 @@ class PointProjective:
         if ev == e:
             return
         raise InvalidSignature()
+
+    def verify_ecsdsa_sha256_bbs(
+        self, signature: bytes, message: bytes, t2prime: Optional[Any]
+    ):
+        """Verification of BBS-Schnorr device binding signature
+        proposed in https://eprint.iacr.org/2025/1995"""
+        assert len(signature) == self.crv.scalar_len * 3
+        if t2prime is None:
+            t2prime = self.crv.generator * 0
+        s = int.from_bytes(signature[: self.crv.scalar_len], "big")
+        c = signature[self.crv.scalar_len : self.crv.scalar_len * 2]
+        c_int = int.from_bytes(c, "big") % self.crv.n
+        n = signature[self.crv.scalar_len * 2 :]
+        t_dsk = self.crv.generator * s + self * c_int
+        t2 = t_dsk + t2prime
+        t2_bin = t2.to_sec1_uncompressed()
+        cv = sha256(n + t2_bin + message)
+        cv_int = int.from_bytes(cv, "big") % self.crv.n
+        if cv_int == c_int:
+            return
+        raise InvalidSignature()
+
+
+def split_bbs_sign(
+    crv: Curve,
+    sk: int,
+    dpk: PointProjective,
+    attrs: list[int],
+    attr_generators: list[PointProjective],
+) -> tuple[PointProjective, int]:
+    g1 = crv.generator
+    e = crv.insecure_random_scalar()
+    A = (
+        g1 + dpk + sum((hi * ai for hi, ai in zip(attr_generators, attrs)), crv.zero())
+    ) * modinv((e + sk) % crv.n, crv.n)
+    if A.is_zero():
+        raise ValueError("A was zero")
+    return A, e
+
+
+def bbs_schnorr_show_user_1(
+    A: PointProjective,
+    e: int,
+    dpk: PointProjective,
+    attrs: list[int],
+    attr_generators: list[PointProjective],
+    pk: PointProjective,
+    disclose_idx: set[int],
+    ctx: bytes,
+):
+    """ShowUser1 procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
+    assert len(attrs) == len(attr_generators)
+    assert all(d >= 0 and d < len(attrs) for d in disclose_idx)
+    assert 0 not in disclose_idx
+
+    crv = CRV_BLS
+    g1 = crv.generator
+    idx = list(range(len(attrs)))
+    undisclosed_idx = set(idx) - disclose_idx
+    undisclosed_idx_nonzero = undisclosed_idx - set([0])
+
+    r1 = crv.insecure_random_scalar()
+    r2 = crv.insecure_random_scalar()
+    r2inv = modinv(r2, crv.n)
+    Abar = A * (r1 * r2inv)
+    D = (
+        g1
+        + dpk
+        + sum((hi * ai for hi, ai in zip(attr_generators[1:], attrs[1:])), crv.zero())
+    ) * r2inv
+    Bbar = (D * r1) + (Abar * (-e))
+    rr1 = crv.insecure_random_scalar()
+    rr2 = crv.insecure_random_scalar()
+    re = crv.insecure_random_scalar()
+    rai = [
+        crv.insecure_random_scalar() if i in undisclosed_idx_nonzero else None
+        for i in idx
+    ]
+    t1 = (D * rr1) + (Abar * re)
+    t2prime = D * rr2 + sum(
+        (attr_generators[i] * rai[i] for i in undisclosed_idx_nonzero), crv.zero()
+    )
+    c_host = sha256(
+        cbor.encode(
+            [
+                Abar.to_sec1_uncompressed(),
+                Bbar.to_sec1_uncompressed(),
+                D.to_sec1_uncompressed(),
+                g1.to_sec1_uncompressed(),
+                g1.to_sec1_uncompressed(),
+                [gen.to_sec1_uncompressed() for gen in attr_generators],
+                len(attr_generators) + 1,
+                t1.to_sec1_uncompressed(),
+                [crv.scalar_to_big_endian(attrs[i]) for i in sorted(disclose_idx)],
+                sorted(disclose_idx),
+                pk.to_sec1_uncompressed(),
+            ]
+        )
+    )
+
+    return (
+        c_host,
+        rr1,
+        r1,
+        rr2,
+        r2,
+        re,
+        e,
+        rai,
+        attrs,
+        disclose_idx,
+        Abar,
+        Bbar,
+        D,
+        t2prime,
+        dpk,
+    )
+
+
+def finish_split_bbs_proof(
+    c_host: bytes,
+    rr1: int,
+    r1: int,
+    rr2: int,
+    r2: int,
+    re: int,
+    e: int,
+    rai: list[int],
+    attrs: list[int],
+    disclose_idx: set[int],
+    Abar: PointProjective,
+    Bbar: PointProjective,
+    D: PointProjective,
+    sa0: int,
+    c: bytes,
+    n: bytes,
+    t2prime: PointProjective,
+    dpk: PointProjective,
+):
+    """Second part of "Split BBS.ZKProve" based on proposal by Cordian Daniluk
+    and Anja Lehmann"""
+    assert len(attrs) == len(rai)
+    assert 0 not in disclose_idx
+
+    crv = CRV_BLS
+    g1 = crv.generator
+    idx = list(range(len(attrs)))
+    undisclosed_idx = set(range(len(attrs))) - disclose_idx
+    undisclosed_idx_nonzero = undisclosed_idx - set([0])
+
+    c_int = int.from_bytes(c, "big") % crv.n
+    t_dsk = g1 * sa0 + dpk * c_int
+    t2 = t_dsk + t2prime
+    t2_bin = t2.to_sec1_uncompressed()
+    c2 = int.from_bytes(sha256(n + t2_bin + c_host), "big") % crv.n
+    assert c2 == c_int
+
+    sr1 = (rr1 + c_int * r1) % crv.n
+    sr2 = (rr2 + c_int * r2) % crv.n
+    se = (re - c_int * e) % crv.n
+    sai = [
+        sa0,
+        *[
+            rai[i] - c_int * attrs[i] if i in undisclosed_idx_nonzero else None
+            for i in idx[1:]
+        ],
+    ]
+
+    return Abar, Bbar, D, c_int, sr1, sr2, se, sai, n
+
+
+def verify_split_bbs_proof(
+    Abar: PointProjective,
+    Bbar: PointProjective,
+    D: PointProjective,
+    c: int,
+    sr1: int,
+    sr2: int,
+    se: int,
+    sai: list[int],
+    pk: PointProjective,
+    disclosed_idx: set[int],
+    attrs: list[int | None],
+    attr_generators: list[PointProjective],
+    ctx: bytes,
+    n: bytes,
+):
+    assert len(attrs) == len(attr_generators)
+    assert len(sai) == len(attr_generators)
+    assert all(d >= 0 and d < len(attr_generators) for d in disclosed_idx)
+
+    crv = CRV_BLS
+    g1 = crv.generator
+    undisclosed_idx = set(range(len(attr_generators))) - disclosed_idx
+
+    t1 = D * sr1 + Abar * se + Bbar * (-c)
+    t2 = (
+        D * sr2
+        + sum((attr_generators[i] * sai[i] for i in undisclosed_idx), crv.zero())
+        + (g1 + sum((attr_generators[i] * attrs[i] for i in disclosed_idx), crv.zero()))
+        * (-c)
+    )
+
+    c_host = sha256(
+        cbor.encode(
+            [
+                Abar.to_sec1_uncompressed(),
+                Bbar.to_sec1_uncompressed(),
+                D.to_sec1_uncompressed(),
+                g1.to_sec1_uncompressed(),
+                g1.to_sec1_uncompressed(),
+                [gen.to_sec1_uncompressed() for gen in attr_generators],
+                len(attr_generators) + 1,
+                t1.to_sec1_uncompressed(),
+                [crv.scalar_to_big_endian(attrs[i]) for i in sorted(disclosed_idx)],
+                sorted(disclosed_idx),
+                pk.to_sec1_uncompressed(),
+            ]
+        )
+    )
+    cv = int.from_bytes(sha256(n + t2.to_sec1_uncompressed() + c_host), "big") % crv.n
+    return cv == c
 
 
 CRV_BLS = Curve(
