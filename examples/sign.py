@@ -37,16 +37,15 @@ from exampleutils import get_client
 
 from fido2 import bls12_381, cbor
 from fido2.cose import (
-    CoseKey,
-    EdDSA,
     ES256,
     ESP256,
-    EcsdsaBls12_381_Sha256,
+    CoseKey,
     EcsdsaBls12_381_Bbs_Sha256,
+    EcsdsaBls12_381_Sha256,
+    EdDSA,
 )
 from fido2.server import Fido2Server
 from fido2.utils import sha256, websafe_encode
-
 
 ESP256_2P = -70009  # Placeholder value
 

@@ -60,10 +60,12 @@ create_options, state = server.register_begin(
 )
 
 print(create_options)
-options = PublicKeyCredentialCreationOptions.from_dict({
-    **create_options["publicKey"],
-    "pubKeyCredParams": [{"type": "public-key", "alg": -65600}]
-})
+options = PublicKeyCredentialCreationOptions.from_dict(
+    {
+        **create_options["publicKey"],
+        "pubKeyCredParams": [{"type": "public-key", "alg": -65600}],
+    }
+)
 print(options)
 
 # Create a credential
