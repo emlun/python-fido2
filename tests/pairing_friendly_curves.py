@@ -41,8 +41,8 @@ def test_pfb_ex_4_1_1():
     k = 2
     f = PrimeField(q)
     fq2 = ExtensionField(f, [1, 0, 1])
-    crv = Curve(field=f, a=0, b=4, n=h * r, h=h, generator=None)
-    crv2 = Curve(field=fq2, a=0, b=4, n=h * r**2, h=h, generator=None)
+    crv = Curve(field=f, a=0, b=4, n=r, h=h, generator=None)
+    crv2 = Curve(field=fq2, a=0, b=4, n=r**2, h=h, generator=None)
 
     points = [
         crv2.zero().to_affine(),
@@ -129,9 +129,9 @@ def test_pfb_ex_4_3_1():
     k = 2
     fq = PrimeField(q)
     fq2 = ExtensionField(fq, [1, 0, 1])
-    crv = Curve(field=fq, a=0, b=4, n=h * r, h=h, generator=None)
-    crv2 = Curve(field=fq2, a=0, b=4, n=h * r**2, h=h, generator=None)
-    tcrv = Curve(field=fq, a=0, b=-4, n=h * r, h=h, generator=None)
+    crv = Curve(field=fq, a=0, b=4, n=r, h=h, generator=None)
+    crv2 = Curve(field=fq2, a=0, b=4, n=r**2, h=h, generator=None)
+    tcrv = Curve(field=fq, a=0, b=-4, n=r, h=h, generator=None)
 
     def psi_inv(p):
         if p.is_zero():
