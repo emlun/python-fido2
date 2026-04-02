@@ -273,7 +273,7 @@ def test_pfb_ex_5_2_1():
     h = 4
     fq = PrimeField(q)
     fq2 = ExtensionField(fq, fq.monoup(2) + 2)
-    crv2 = Curve(fq2, a=0, b=-3, n=h * r**2, h=h, generator=(fq2.zero(), fq2.zero()))
+    crv2 = Curve(fq2, a=0, b=-3, n=r**2, h=h, generator=(fq2.zero(), fq2.zero()))
     points = [
         crv2.zero().to_affine(),
         *[
@@ -370,7 +370,7 @@ def test_pfb_ex_5_2_2():
     h = 4
     fq = PrimeField(q)
     fq2 = ExtensionField(fq, fq.monoup(2) + 2)
-    crv2 = Curve(fq2, a=0, b=-3, n=h * r**2, h=h, generator=(fq2.zero(), fq2.zero()))
+    crv2 = Curve(fq2, a=0, b=-3, n=r**2, h=h, generator=(fq2.zero(), fq2.zero()))
     P = PointAffine(fq2.el([3]), fq2.el([2]), crv2)
     Q = PointAffine(fq2.el([1, 1]), fq2.el([2, 4]), crv2)
     R = PointAffine(fq2.el([0, 2]), fq2.el([2, 1]), crv2)
