@@ -338,35 +338,37 @@ class PointProjective:
             return
         raise InvalidSignature()
 
-    def verify_ecsdsa_sha256_bbs(
-        self, signature: bytes, message: bytes, t2prime: Optional[Any]
-    ):
-        """Verification of BBS-Schnorr device binding signature
-        proposed in https://eprint.iacr.org/2025/1995"""
-        assert len(signature) == self.crv.scalar_len * 3
-        if t2prime is None:
-            t2prime = self.crv.generator * 0
-        s = int.from_bytes(signature[: self.crv.scalar_len], "big")
-        c = signature[self.crv.scalar_len : self.crv.scalar_len * 2]
-        c_int = int.from_bytes(c, "big") % self.crv.n
-        n = signature[self.crv.scalar_len * 2 :]
-        t_dsk = self.crv.generator * s + self * c_int
-        t2 = t_dsk + t2prime
-        t2_bin = t2.to_sec1_uncompressed()
-        cv = sha256(n + t2_bin + message)
-        cv_int = int.from_bytes(cv, "big") % self.crv.n
-        if cv_int == c_int:
-            return
-        raise InvalidSignature()
+
+class BbsSchnorr:
+    """BBS-Schnorr scheme proposed in https://eprint.iacr.org/2025/1995"""
+
+    def __init__(self, crv: Curve, num_attrs: int):
+        self.crv = crv
+        self.num_attrs = num_attrs
+        self.g1 = crv.generator
 
 
-def split_bbs_sign(
+def bbs_schnorr_setup(
+) -> tuple[PointProjective, int]:
+    """Setup procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
+    g1 = crv.generator
+    e = crv.insecure_random_scalar()
+    A = (
+        g1 + dpk + sum((hi * ai for hi, ai in zip(attr_generators, attrs)), crv.zero())
+    ) * modinv((e + sk) % crv.n, crv.n)
+    if A.is_zero():
+        raise ValueError("A was zero")
+    return A, e
+
+
+def bbs_schnorr_issue(
     crv: Curve,
     sk: int,
     dpk: PointProjective,
     attrs: list[int],
     attr_generators: list[PointProjective],
 ) -> tuple[PointProjective, int]:
+    """Issue procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
     g1 = crv.generator
     e = crv.insecure_random_scalar()
     A = (
@@ -456,7 +458,7 @@ def bbs_schnorr_show_user_1(
     )
 
 
-def finish_split_bbs_proof(
+def bbs_schnorr_show_user_2(
     c_host: bytes,
     rr1: int,
     r1: int,
@@ -476,8 +478,7 @@ def finish_split_bbs_proof(
     t2prime: PointProjective,
     dpk: PointProjective,
 ):
-    """Second part of "Split BBS.ZKProve" based on proposal by Cordian Daniluk
-    and Anja Lehmann"""
+    """ShowUser2 procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
     assert len(attrs) == len(rai)
     assert 0 not in disclose_idx
 
@@ -508,7 +509,7 @@ def finish_split_bbs_proof(
     return Abar, Bbar, D, c_int, sr1, sr2, se, sai, n
 
 
-def verify_split_bbs_proof(
+def bbs_schnorr_vf_cred(
     Abar: PointProjective,
     Bbar: PointProjective,
     D: PointProjective,
@@ -524,6 +525,7 @@ def verify_split_bbs_proof(
     ctx: bytes,
     n: bytes,
 ):
+    """VfCred procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
     assert len(attrs) == len(attr_generators)
     assert len(sai) == len(attr_generators)
     assert all(d >= 0 and d < len(attr_generators) for d in disclosed_idx)
