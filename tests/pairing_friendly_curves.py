@@ -31,6 +31,61 @@ def test_wikipedia_extended_eucliedean_algorithm():
     )
 
 
+def test_pfb_ex_4_1_1():
+    """
+    "Pairings for beginners" example 4.1.1
+    """
+    q = 11
+    r = 3
+    h = 4
+    k = 2
+    f = PrimeField(q)
+    fq2 = ExtensionField(f, [1, 0, 1])
+    crv = Curve(field=f, a=0, b=4, n=h * r, h=h, generator=None)
+    crv2 = Curve(field=fq2, a=0, b=4, n=h * r**2, h=h, generator=None)
+
+    points = [
+        crv2.zero().to_affine(),
+        *[
+            p
+            for p in [
+                PointAffine(fq2.el([x0, x1]), fq2.el([y0, y1]), crv2)
+                for x0 in range(q)
+                for x1 in range(q)
+                for y0 in range(q)
+                for y1 in range(q)
+            ]
+            if p.is_zero() or p.is_valid_nonzero()
+        ],
+    ]
+
+    r_torsion = [p for p in points if (p * r).is_zero()]
+    assert len(r_torsion) == 9
+    assert set(
+        [
+            p
+            for p in r_torsion
+            if p.is_zero() or (p.x.degree() == 0 and p.y.degree() == 0)
+        ]
+    ) == set([crv2.zero()] + crv2.points([([0], [2]), ([0], [9])]))
+
+    assert set(r_torsion) == set(
+        [crv2.zero()]
+        + crv2.points(
+            [
+                ([0], [2]),
+                ([0], [9]),
+                ([8], [0, 1]),
+                ([8], [0, 10]),
+                ([7, 2], [0, 10]),
+                ([7, 2], [0, 1]),
+                ([7, 9], [0, 10]),
+                ([7, 9], [0, 1]),
+            ]
+        )
+    )
+
+
 def test_pfb_ex_4_1_5():
     """
     "Pairings for beginners" example 4.1.5
@@ -64,22 +119,68 @@ def test_pfb_ex_4_1_5():
     assert x ** (59**2) == x
 
 
+def test_pfb_ex_4_3_1():
+    """
+    "Pairings for beginners" example 4.3.1
+    """
+    q = 11
+    r = 3
+    h = 4
+    k = 2
+    fq = PrimeField(q)
+    fq2 = ExtensionField(fq, [1, 0, 1])
+    crv = Curve(field=fq, a=0, b=4, n=h * r, h=h, generator=None)
+    crv2 = Curve(field=fq2, a=0, b=4, n=h * r**2, h=h, generator=None)
+    tcrv = Curve(field=fq, a=0, b=-4, n=h * r, h=h, generator=None)
+
+    def psi_inv(p):
+        if p.is_zero():
+            return p.crv.zero()
+        return PointAffine(-p.x, fq2.mono(1) * p.y, p.crv)
+
+    def psi(p):
+        if p.is_zero():
+            return p.crv.zero()
+        return PointAffine(-p.x, -fq2.mono(1) * p.y, p.crv)
+
+    tcrv2, twistp, untwistp = crv2.twist()
+
+    print(crv2.point([8], [0, 1]))
+    print(psi_inv(crv2.point([8], [0, 1])))
+    print(crv.point(3, 10))
+    assert psi_inv(crv2.point([8], [0, 1])) == crv2.point([3], [10])
+    assert psi_inv(crv2.point([8], [0, 10])) == crv2.point([3], [1])
+
+
 def test_pfb_ex_4_3_2():
     """
     "Pairings for beginners" example 4.3.2
     """
     q = 103
+    r = 7
     f = PrimeField(q)
     ef = ExtensionField(f, 2 * f.monoup(0) + f.monoup(6))
     crv = Curve(
         field=ef,
         a=0,
         b=72,
-        n=7,
-        h=84 // 7,
+        n=r,
+        h=84 // r,
         generator=(35 * ef.mono(4), 42 * ef.mono(3)),
     )
-    tcrv, twistp, untwistp = crv.twist()
+    tcrv, twistp, untwistp = crv.twist(generator=(ef.el([33]), ef.el([19])))
+
+    subgroup = [twistp(crv.generator.to_affine()) * i for i in range(r)]
+    assert subgroup == [tcrv.generator * i for i in range(r)]
+    assert subgroup == [
+        tcrv.zero(),
+        tcrv.point([33], [19]),
+        tcrv.point([97], [19]),
+        tcrv.point([76], [84]),
+        tcrv.point([76], [19]),
+        tcrv.point([97], [84]),
+        tcrv.point([33], [84]),
+    ]
 
     for i in range(crv.n + 1):
         gi = crv.generator * i

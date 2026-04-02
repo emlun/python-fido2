@@ -712,6 +712,9 @@ class Curve:
         y = int.from_bytes(sec1[(1 + self.coord_len) : (1 + self.coord_len * 2)], "big")
         return PointAffine(x, y, self).to_projective()
 
+    def point(self, x: list[int], y: list[int]):
+        return PointAffine(self.field.el(x), self.field.el(y), self)
+
     def points(self, els: list[Tuple[list[int], list[int]]]):
         return [PointAffine(self.field.el(x), self.field.el(y), self) for (x, y) in els]
 
