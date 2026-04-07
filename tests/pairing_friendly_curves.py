@@ -498,3 +498,68 @@ def test_pfb_ex_5_3_1():
     wr = frp_dq / wr_denominator
     assert wr == fq4.el([13, 32, 12, 22])
     assert miller_weil_pairing(P, Q) == fq4.el([13, 32, 12, 22])
+
+
+def test_pfb_ex_7_1_1():
+    """
+    "Pairings for beginners" example 7.1.1
+    """
+    q = 47
+    k = 4
+    r = 17
+    h = 3
+    fq = PrimeField(q)
+    fq4 = ExtensionField(fq, fq.pol([5, 0, -4, 0, 1]))
+    crv = Curve(
+        field=fq4,
+        a=fq4.el([21]),
+        b=fq4.el([15]),
+        n=r,
+        h=(3**3 * 5**4 * 17**2) // r,
+        generator=(fq4.zero(), fq4.zero()),
+    )
+    P = PointAffine(fq4.el([45]), fq4.el([23]), crv)
+    Q = PointAffine(fq4.el([29, 0, 31]), fq4.el([0, 11, 0, 35]), crv)
+    me, log = miller_eval_denom_elim(P, Q)
+    assert me == fq4.el([12, 43, 17, 32])
+    assert log == [
+        (crv.point([45], [23]), None, None, None, 1),
+        (
+            crv.point([12], [16]),
+            fq4.el([13, 11, 36, 35]),
+            fq4.el([17, 0, 31]),
+            fq4.el([33, 36, 19, 6]),
+            fq4.el([33, 36, 19, 6]),
+        ),
+        (
+            crv.point([27], [14]),
+            fq4.el([18, 11, 15, 35]),
+            fq4.el([2, 0, 31]),
+            fq4.el([18, 20, 8, 39]),
+            fq4.el([4, 24, 17, 11]),
+        ),
+        (
+            crv.point([18], [31]),
+            fq4.el([23, 11, 33, 35]),
+            fq4.el([11, 0, 31]),
+            fq4.el([30, 41, 32, 18]),
+            fq4.el([10, 5, 34, 22]),
+        ),
+        (
+            crv.point([45], [24]),
+            fq4.el([21, 11, 44, 35]),
+            fq4.el([31, 0, 31]),
+            fq4.el([20, 25, 26, 21]),
+            fq4.el([27, 5, 22, 8]),
+        ),
+        (
+            crv.zero(),
+            fq4.el([29, 0, 31]) + fq4.el([2]),
+            fq4.el([1]),
+            fq4.el([31, 0, 31]),
+            fq4.el([12, 43, 17, 32]),
+        ),
+    ]
+    mert, log2 = miller_rtate_pairing_denom_elim(P, Q)
+    assert log2 == log
+    assert mert == fq4.el([39, 45, 43, 33])
