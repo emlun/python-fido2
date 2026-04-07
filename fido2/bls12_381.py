@@ -1293,7 +1293,13 @@ def rtate_pairing(P: PointAffine, Q: PointAffine) -> Polynomial:
 
 def miller_eval(
     P: PointAffine, DQ: (list[PointAffine], list[PointAffine])
-) -> Tuple[Polynomial, list[Tuple[Polynomial, Polynomial, Polynomial, Polynomial, Polynomial] | Tuple[Polynomial, None, None, None, Polynomial]]]:
+) -> Tuple[
+    Polynomial,
+    list[
+        Tuple[Polynomial, Polynomial, Polynomial, Polynomial, Polynomial]
+        | Tuple[Polynomial, None, None, None, Polynomial]
+    ],
+]:
     DQn, DQd = DQ
     assert isinstance(P, PointAffine)
     assert isinstance(DQn, list)
@@ -1349,12 +1355,14 @@ def miller_eval(
     return f, log
 
 
-def miller_rtate_pairing(P: PointAffine, Q: PointAffine) -> Tuple[Polynomial, list[Tuple[Polynomial, Polynomial, Polynomial]]]:
+def miller_rtate_pairing(
+    P: PointAffine, Q: PointAffine
+) -> Tuple[Polynomial, list[Tuple[Polynomial, Polynomial, Polynomial]]]:
     q = P.crv.field.characteristic()
     k = P.crv.field.ext_degree()
     r = P.crv.n
     me, log = miller_eval(P, ([Q * 2], [Q]))
-    return me**((q**k) // r), log
+    return me ** ((q**k) // r), log
 
 
 def miller_weil_pairing(P: PointAffine, Q: PointAffine) -> Polynomial:
