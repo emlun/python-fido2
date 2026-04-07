@@ -38,14 +38,7 @@ from fido2.server import Fido2Server
 
 # Locate a suitable FIDO authenticator
 client, info = get_client()
-
-
-# Prefer UV if supported and configured
-if info and (info.options.get("uv") or info.options.get("bioEnroll")):
-    uv = "preferred"
-    print("Authenticator supports User Verification")
-else:
-    uv = "discouraged"
+uv = "discouraged"
 
 
 server = Fido2Server({"id": "example.com", "name": "Example RP"}, attestation="direct")
@@ -58,37 +51,28 @@ create_options, state = server.register_begin(
     user, user_verification=uv, authenticator_attachment="cross-platform"
 )
 
-# Create a credential
-result = client.make_credential(create_options["publicKey"])
+for i in range(20):
+    # Create a credential
+    result = client.make_credential(create_options["publicKey"])
 
-# Complete registration
-auth_data = server.register_complete(state, result)
-credentials = [auth_data.credential_data]
+    # Complete registration
+    auth_data = server.register_complete(state, result)
+    credentials = [auth_data.credential_data]
 
-print("New credential created!")
-response = result.response
+    response = result.response
 
-print("CLIENT DATA:", response.client_data)
-print("ATTESTATION OBJECT:", response.attestation_object)
-print()
-print("CREDENTIAL DATA:", auth_data.credential_data)
+    sig = response.attestation_object.att_stmt["sig"]
+    print("SIG:", sig.hex())
+    rlen = sig[3]
+    rder = sig[2 : 2 + 2 + rlen]
+    r = rder[2:]
+    sder = sig[2 + 2 + rlen :]
+    s = sder[2:]
+    print("rder:", rder.hex())
+    print("sder:", sder.hex())
+    print("r:", r.hex())
+    print("s:", s.hex())
+    print()
 
-
-# Prepare parameters for getAssertion
-request_options, state = server.authenticate_begin(credentials, user_verification=uv)
-
-# Authenticate the credential
-results = client.get_assertion(request_options["publicKey"])
-
-# Only one cred in allowCredentials, only one response.
-result = results.get_response(0)
-
-# Complete authenticator
-server.authenticate_complete(state, credentials, result)
-
-print("Credential authenticated!")
-response = result.response
-
-print("CLIENT DATA:", response.client_data)
-print()
-print("AUTH DATA:", response.authenticator_data)
+    assert r[0] != 0 or ((r[1] & 0x80) == 0x80)
+    assert s[0] != 0 or ((s[1] & 0x80) == 0x80)
