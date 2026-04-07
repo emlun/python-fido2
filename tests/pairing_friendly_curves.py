@@ -473,7 +473,8 @@ def test_pfb_ex_5_3_1():
             fq4.el([22, 10, 6, 17]),
         ),
     ]
-    mert, _ = miller_rtate_pairing(P, Q)
+    mert, log2 = miller_rtate_pairing(P, Q)
+    assert log2 == log
     assert mert == fq4.el([39, 45, 43, 33])
     frp_dq, _ = miller_eval(P, ([Q * 2], [Q]))
     frq_dp, _ = miller_eval(Q, ([P * 2], [P]))
