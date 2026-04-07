@@ -1293,7 +1293,7 @@ def rtate_pairing(P: PointAffine, Q: PointAffine) -> Polynomial:
 
 def miller_eval(
     P: PointAffine, DQ: (list[PointAffine], list[PointAffine])
-) -> Polynomial:
+) -> Tuple[Polynomial, list[Tuple[Polynomial, Polynomial, Polynomial, Polynomial, Polynomial] | Tuple[Polynomial, None, None, None, Polynomial]]]:
     DQn, DQd = DQ
     assert isinstance(P, PointAffine)
     assert isinstance(DQn, list)
@@ -1310,6 +1310,7 @@ def miller_eval(
 
     R = P
     f = 1
+    log = [(R, None, None, None, f)]
     for i in reversed(range(n - 2 + 1)):
         print(i)
 
@@ -1326,6 +1327,7 @@ def miller_eval(
         upd = updn / updd
         f = f**2 * upd
         # print(f"{i}\tlv: {lv}  \tupdn: {updn}  \tupdd: {updd}  \tupd: {upd}  \tf:{f}")
+        log.append((R, updn, updd, upd, f))
 
         if (r >> i) % 2 == 1:
             # print(i, R)
@@ -1341,16 +1343,18 @@ def miller_eval(
             updd = product(lv.eval(d) for d in DQd)
             upd = updn / updd
             f = f * upd
+            log.append((R, updn, updd, upd, f))
             # print(f"{i}\tlv: {lv}  \tupdn: {updn}  \tupdd: {updd}  \tupd: {upd}  \tf:{f}")
 
-    return f
+    return f, log
 
 
-def miller_rtate_pairing(P: PointAffine, Q: PointAffine) -> Polynomial:
+def miller_rtate_pairing(P: PointAffine, Q: PointAffine) -> Tuple[Polynomial, list[Tuple[Polynomial, Polynomial, Polynomial]]]:
     q = P.crv.field.characteristic()
     k = P.crv.field.ext_degree()
     r = P.crv.n
-    return miller_eval(P, ([Q * 2], [Q])) ** ((q**k) // r)
+    me, log = miller_eval(P, ([Q * 2], [Q]))
+    return me**((q**k) // r), log
 
 
 def miller_weil_pairing(P: PointAffine, Q: PointAffine) -> Polynomial:
@@ -1358,8 +1362,8 @@ def miller_weil_pairing(P: PointAffine, Q: PointAffine) -> Polynomial:
     fx = ExtensionField(P.crv.field, None)
     fy = ExtensionField(fx, [-(fx.mono(3) + P.crv.a * fx.mono(1) + P.crv.b), 0, 1])
 
-    frp_dq = miller_eval(P, ([Q * 2], [Q]))
-    frq_dp = miller_eval(Q, ([P * 2], [P]))
+    frp_dq, _ = miller_eval(P, ([Q * 2], [Q]))
+    frq_dp, _ = miller_eval(Q, ([P * 2], [P]))
     R = P
     S = Q
     lpr = intersect_fn(P, R, fy)
