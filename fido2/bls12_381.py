@@ -4,7 +4,7 @@ import math
 import os
 from functools import reduce
 from itertools import zip_longest
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 
 from cryptography.exceptions import InvalidSignature
 
