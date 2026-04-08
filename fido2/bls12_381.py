@@ -1355,7 +1355,7 @@ def miller_eval(
     return f, log
 
 
-def miller_eval_denom_elim(
+def miller_eval_point(
     P: PointAffine, Q: PointAffine
 ) -> Tuple[
     Polynomial,
@@ -1364,7 +1364,7 @@ def miller_eval_denom_elim(
         | Tuple[Polynomial, None, None, None, Polynomial]
     ],
 ]:
-    """Miller's algorithm with denominator elimination ("Pairings for beginners" chapter 7.1)"""
+    """Miller's algorithm evaluating at the point Q instead of a divisor DQ ("Pairings for beginners" chapter 7.1)"""
     assert isinstance(P, PointAffine)
     assert isinstance(Q, PointAffine)
     assert P.crv is Q.crv
@@ -1429,13 +1429,13 @@ def miller_rtate_pairing(
     return me ** ((q**k) // r), log
 
 
-def miller_rtate_pairing_denom_elim(
+def miller_rtate_pairing_point(
     P: PointAffine, Q: PointAffine
 ) -> Tuple[Polynomial, list[Tuple[Polynomial, Polynomial, Polynomial]]]:
     q = P.crv.field.characteristic()
     k = P.crv.field.ext_degree()
     r = P.crv.n
-    me, log = miller_eval_denom_elim(P, Q)
+    me, log = miller_eval_point(P, Q)
     return me ** ((q**k) // r), log
 
 

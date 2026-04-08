@@ -520,7 +520,7 @@ def test_pfb_ex_7_1_1():
     )
     P = PointAffine(fq4.el([45]), fq4.el([23]), crv)
     Q = PointAffine(fq4.el([29, 0, 31]), fq4.el([0, 11, 0, 35]), crv)
-    me, log = miller_eval_denom_elim(P, Q)
+    me, log = miller_eval_point(P, Q)
     assert me == fq4.el([12, 43, 17, 32])
     assert log == [
         (crv.point([45], [23]), None, None, None, 1),
@@ -560,6 +560,6 @@ def test_pfb_ex_7_1_1():
             fq4.el([12, 43, 17, 32]),
         ),
     ]
-    mert, log2 = miller_rtate_pairing_denom_elim(P, Q)
+    mert, log2 = miller_rtate_pairing_point(P, Q)
     assert log2 == log
     assert mert == fq4.el([39, 45, 43, 33])
