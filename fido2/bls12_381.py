@@ -1427,25 +1427,20 @@ def miller_eval_denom_elim(
     f = 1
     log = [(R, None, f)]
     for i in reversed(range(n - 2 + 1)):
-        print(i)
-
         assert not R.is_zero(), (i, r, P)
-        # print(i, R)
 
-        R2 = R * 2
         lf = intersect_fn(R, R, fy)
-        R = R2
+        R = R * 2
         upd = lf.eval(Q)
         f = f**2 * upd
         log.append((R, upd, f))
 
         if (r >> i) % 2 == 1:
-            RP = R + P
             if R == -P:
                 lf = fy.promote(vertical_fn(P, fy))
             else:
                 lf = intersect_fn(R, P, fy)
-            R = RP
+            R = R + P
             upd = lf.eval(Q)
             f = f * upd
             log.append((R, upd, f))
