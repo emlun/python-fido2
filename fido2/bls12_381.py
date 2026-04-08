@@ -1380,7 +1380,7 @@ def miller_eval_point(
     for i in reversed(range(n - 2 + 1)):
         print(i)
 
-        assert not R.is_zero(), (i, r, P, DQ)
+        assert not R.is_zero(), (i, r, P)
         # print(i, R)
 
         R2 = R * 2
