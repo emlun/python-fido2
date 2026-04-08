@@ -618,3 +618,50 @@ def test_pfb_ex_7_1_2():
     mert, log2 = miller_rtate_pairing_denom_elim(P, Q)
     assert log2 == log
     assert mert == fq4.el([39, 45, 43, 33])
+
+
+def test_pfb_ex_7_1_2_opt():
+    """
+    "Pairings for beginners" example 7.1.1, using optimized Miller loop
+    """
+    q = 47
+    k = 4
+    r = 17
+    h = 3
+    fq = PrimeField(q)
+    fq4 = ExtensionField(fq, fq.pol([5, 0, -4, 0, 1]))
+    crv = Curve(
+        field=fq4,
+        a=fq4.el([21]),
+        b=fq4.el([15]),
+        n=r,
+        h=(3**3 * 5**4 * 17**2) // r,
+        generator=(fq4.zero(), fq4.zero()),
+    )
+    P = PointAffine(fq4.el([45]), fq4.el([23]), crv)
+    Q = PointAffine(fq4.el([29, 0, 31]), fq4.el([0, 11, 0, 35]), crv)
+    mert, log = miller_rtate_pairing_denom_elim_opt(P, Q)
+    assert log == [
+        (crv.point([45], [23]), None, 1),
+        (
+            crv.point([12], [16]),
+            fq4.el([13, 11, 36, 35]),
+            fq4.el([13, 11, 36, 35]),
+        ),
+        (
+            crv.point([27], [14]),
+            fq4.el([18, 11, 15, 35]),
+            fq4.el([44, 3, 34, 44]),
+        ),
+        (
+            crv.point([18], [31]),
+            fq4.el([23, 11, 33, 35]),
+            fq4.el([24, 21, 24, 5]),
+        ),
+        (
+            crv.point([45], [24]),
+            fq4.el([21, 11, 44, 35]),
+            fq4.el([25, 9, 36, 21]),
+        ),
+    ]
+    assert mert == fq4.el([39, 45, 43, 33])
