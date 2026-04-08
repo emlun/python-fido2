@@ -1405,6 +1405,54 @@ def miller_eval_point(P: PointAffine, Q: PointAffine) -> Tuple[Polynomial, Mille
     return f, log
 
 
+type MillerLog3 = list[
+    Tuple[Polynomial, None, Polynomial] | Tuple[Polynomial, Polynomial, Polynomial]
+]
+
+
+def miller_eval_denom_elim(
+    P: PointAffine, Q: PointAffine
+) -> Tuple[Polynomial, MillerLog3]:
+    """Miller's algorithm with denominator elimination ("Pairings for beginners" chapter 7.1)"""
+    assert isinstance(P, PointAffine)
+    assert isinstance(Q, PointAffine)
+    assert P.crv is Q.crv
+
+    r = P.crv.n
+    fx = ExtensionField(P.crv.field, None)
+    fy = ExtensionField(fx, [-(fx.mono(3) + P.crv.a * fx.mono(1) + P.crv.b), 0, 1])
+    n = math.ceil(math.log2(r))
+
+    R = P
+    f = 1
+    log = [(R, None, f)]
+    for i in reversed(range(n - 2 + 1)):
+        print(i)
+
+        assert not R.is_zero(), (i, r, P)
+        # print(i, R)
+
+        R2 = R * 2
+        lf = intersect_fn(R, R, fy)
+        R = R2
+        upd = lf.eval(Q)
+        f = f**2 * upd
+        log.append((R, upd, f))
+
+        if (r >> i) % 2 == 1:
+            RP = R + P
+            if R == -P:
+                lf = fy.promote(vertical_fn(P, fy))
+            else:
+                lf = intersect_fn(R, P, fy)
+            R = RP
+            upd = lf.eval(Q)
+            f = f * upd
+            log.append((R, upd, f))
+
+    return f, log
+
+
 def miller_rtate_pairing(
     P: PointAffine, Q: PointAffine
 ) -> Tuple[Polynomial, MillerLog5]:
@@ -1422,6 +1470,16 @@ def miller_rtate_pairing_point(
     k = P.crv.field.ext_degree()
     r = P.crv.n
     me, log = miller_eval_point(P, Q)
+    return me ** ((q**k) // r), log
+
+
+def miller_rtate_pairing_denom_elim(
+    P: PointAffine, Q: PointAffine
+) -> Tuple[Polynomial, MillerLog3]:
+    q = P.crv.field.characteristic()
+    k = P.crv.field.ext_degree()
+    r = P.crv.n
+    me, log = miller_eval_denom_elim(P, Q)
     return me ** ((q**k) // r), log
 
 
