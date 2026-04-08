@@ -1291,15 +1291,15 @@ def rtate_pairing(P: PointAffine, Q: PointAffine) -> Polynomial:
     return (f.eval(Q + R) / f.eval(R)) ** ((q**k - 1) // r)
 
 
+type MillerLog5 = list[
+    Tuple[Polynomial, None, None, None, Polynomial]
+    | Tuple[Polynomial, Polynomial, Polynomial, Polynomial, Polynomial]
+]
+
+
 def miller_eval(
     P: PointAffine, DQ: (list[PointAffine], list[PointAffine])
-) -> Tuple[
-    Polynomial,
-    list[
-        Tuple[Polynomial, Polynomial, Polynomial, Polynomial, Polynomial]
-        | Tuple[Polynomial, None, None, None, Polynomial]
-    ],
-]:
+) -> Tuple[Polynomial, MillerLog5]:
     DQn, DQd = DQ
     assert isinstance(P, PointAffine)
     assert isinstance(DQn, list)
@@ -1355,15 +1355,7 @@ def miller_eval(
     return f, log
 
 
-def miller_eval_point(
-    P: PointAffine, Q: PointAffine
-) -> Tuple[
-    Polynomial,
-    list[
-        Tuple[Polynomial, Polynomial, Polynomial, Polynomial, Polynomial]
-        | Tuple[Polynomial, None, None, None, Polynomial]
-    ],
-]:
+def miller_eval_point(P: PointAffine, Q: PointAffine) -> Tuple[Polynomial, MillerLog5]:
     """Miller's algorithm evaluating at the point Q instead of a divisor DQ ("Pairings for beginners" chapter 7.1)"""
     assert isinstance(P, PointAffine)
     assert isinstance(Q, PointAffine)
@@ -1415,13 +1407,7 @@ def miller_eval_point(
 
 def miller_rtate_pairing(
     P: PointAffine, Q: PointAffine
-) -> Tuple[
-    Polynomial,
-    list[
-        Tuple[Polynomial, Polynomial, Polynomial, Polynomial, Polynomial]
-        | Tuple[Polynomial, None, None, None, Polynomial]
-    ],
-]:
+) -> Tuple[Polynomial, MillerLog5]:
     q = P.crv.field.characteristic()
     k = P.crv.field.ext_degree()
     r = P.crv.n
@@ -1431,7 +1417,7 @@ def miller_rtate_pairing(
 
 def miller_rtate_pairing_point(
     P: PointAffine, Q: PointAffine
-) -> Tuple[Polynomial, list[Tuple[Polynomial, Polynomial, Polynomial]]]:
+) -> Tuple[Polynomial, MillerLog5]:
     q = P.crv.field.characteristic()
     k = P.crv.field.ext_degree()
     r = P.crv.n
