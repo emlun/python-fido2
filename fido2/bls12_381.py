@@ -1499,7 +1499,7 @@ def miller_rtate_pairing(
     k = P.crv.field.ext_degree()
     r = P.crv.n
     me, log = miller_eval(P, ([Q * 2], [Q]))
-    return me ** ((q**k) // r), log
+    return me ** ((q**k - 1) // r), log
 
 
 def miller_rtate_pairing_point(
@@ -1509,7 +1509,7 @@ def miller_rtate_pairing_point(
     k = P.crv.field.ext_degree()
     r = P.crv.n
     me, log = miller_eval_point(P, Q)
-    return me ** ((q**k) // r), log
+    return me ** ((q**k - 1) // r), log
 
 
 def miller_rtate_pairing_denom_elim(
@@ -1519,7 +1519,7 @@ def miller_rtate_pairing_denom_elim(
     k = P.crv.field.ext_degree()
     r = P.crv.n
     me, log = miller_eval_denom_elim(P, Q)
-    return me ** ((q**k) // r), log
+    return me ** ((q**k - 1) // r), log
 
 
 def miller_rtate_pairing_denom_elim_opt(
@@ -1529,7 +1529,7 @@ def miller_rtate_pairing_denom_elim_opt(
     k = P.crv.field.ext_degree()
     r = P.crv.n
     me, log = miller_eval_denom_elim_opt(P, Q)
-    return me ** ((q**k) // r), log
+    return me ** ((q**k - 1) // r), log
 
 
 def miller_weil_pairing(P: PointAffine, Q: PointAffine) -> Polynomial:
