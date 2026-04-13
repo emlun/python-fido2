@@ -257,6 +257,17 @@ def if_arkg(algorithm, public_key):
         return public_key, None
 
 
+def test_register_multiple_extensions(credential_cache):
+    cred = credential_cache.make_cred_or_skip(
+        lambda cred: len(cred.response.auth_data.extensions) > 1,
+        ALL_ALGORITHMS,
+        extensions={"hmac-secret": True, "credProtect": 1},
+    )
+    ext_ids = list(cred.response.auth_data.extensions.keys())
+    sorted_ext_ids = sorted(ext_ids, key=lambda id: (len(id), id))
+    assert ext_ids == sorted_ext_ids
+
+
 def test_esp256_split(credential_cache, sign):
     algorithms = [
         -300,  # Requested assignment for ESP256-split https://www.ietf.org/archive/id/draft-lundberg-cose-two-party-signing-algs-06.html#name-ecdsa
