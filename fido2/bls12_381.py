@@ -1245,6 +1245,27 @@ def vertical_fn(P: PointAffine, yfield: ExtensionField) -> Polynomial:
     return xfield.mono(1) - P.x
 
 
+def lambda_nu_proj(P: PointProjective, Q: PointProjective) -> (int | Polynomial, int | Polynomial):
+    assert isinstance(P, PointProjective)
+    assert isinstance(Q, PointProjective)
+    assert (not P.is_zero()) and (not Q.is_zero())
+    if P == Q:
+        lmbd = (3 * (P.x**2) + P.crv.a) * P.crv.field.invert((2 * P.y))
+        nu = P.y - lmbd * P.x
+    else:
+        lmbd = (Q.y - P.y) * P.crv.field.invert(Q.x - P.x)
+        nu = P.y - lmbd * P.x
+    return P.crv.field.el(lmbd), P.crv.field.el(nu)
+
+
+def intersect_fn_proj(P: PointProjective, Q: PointProjective, yfield: ExtensionField) -> Polynomial:
+    lmbd, nu = lambda_nu_proj(P, Q)
+    xfield = yfield.base
+    return yfield.mono(1) - (lmbd * xfield.mono(1) + nu * xfield.mono(0)) * yfield.mono(
+        0
+    )
+
+
 def slow_frp(P: PointAffine) -> Polynomial:
     assert isinstance(P, PointAffine)
 
