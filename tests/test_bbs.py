@@ -30,7 +30,7 @@
 
 import pytest
 
-from fido2.bls12_381 import BBS_SCHNORR, BBS_SCHNORR_SUITE, Schnorr
+from fido2.bls12_381 import BBS_SCHNORR, BBS_SCHNORR_SUITE, Schnorr, matrix_mul
 
 
 def test_schnorr_signature():
@@ -57,3 +57,14 @@ def test_schnorr_signature_deterministic():
         "6f1dfc8ec105e7540b70f48ecb7fb6f2c0ec6d98efb6c56d6b092f1f1084ee366af6e9503bc1e6a40706e44012e7b49f0afa13e9f4e559c6226d5e513d24a465"
     )
     assert sig != sig2
+
+
+def test_schnorr_nizk():
+    schnorr = Schnorr(BBS_SCHNORR_SUITE)
+    m = 2
+    n = 3
+    M = [[schnorr.kgen()[1] for i in range(n)] for j in range(m)]
+    x = [schnorr.kgen()[0] for i in range(n)]
+    Y = matrix_mul(M, x)
+    proof = schnorr.nizk_prove(M, Y, x, b"test_schnorr_nizk")
+    assert schnorr.nizk_verify(M, Y, proof, b"test_schnorr_nizk")

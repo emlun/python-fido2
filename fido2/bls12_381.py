@@ -40,7 +40,7 @@ def modsqrt(n, primeModulus):
 def matrix_mul[T](mat: list[list[T]], vec: list[T]) -> list[T]:
     assert len(mat[0]) == len(vec)
     assert all(len(mrow) == len(mat[0]) for mrow in mat)
-    return [sum(m * v for m, v in zip(mrow, vec)) for mrow in mat]
+    return [sum((m * v) for m, v in zip(mrow, vec)) for mrow in mat]
 
 
 type PointAffine = "PointAffine"
@@ -213,6 +213,13 @@ class PointAffine:
             yr = (k * (p.x - xr) - p.y) % self.crv.p
             return PointAffine(xr, yr, self.crv)
 
+    def __radd__(self, other):
+        # Required in order for built-in sum() to work with PointAffine
+        if other == 0:
+            return self
+        else:
+            raise NotImplementedError()
+
     def __mul__(self, k):
         k = k % self.crv.n
         pPow2 = self
@@ -331,6 +338,13 @@ class PointProjective:
                 ) % self.crv.p
                 zr = (pzqz_xpzqmxqzp2 * xpzqmxqzp) % self.crv.p
                 return PointProjective(xr, yr, zr, self.crv)
+
+    def __radd__(self, other):
+        # Required in order for built-in sum() to work with PointAffine
+        if other == 0:
+            return self
+        else:
+            raise NotImplementedError()
 
     def __sub__(self, q):
         return self + (-q)
@@ -472,12 +486,14 @@ class Schnorr:
         - SEC 1 uncompressed encoding of curve points, and
         - binary concatenation for combining hash function inputs.
         """
-        m = len(M[0])
+        m = len(M)
+        n = len(M[0])
         assert len(Y) == m
-        assert len(x) == m
+        assert len(x) == n
+        assert matrix_mul(M, x) == Y
         omega = [
             self.suite.sample_scalar(b"Schnorr.NIZK.Prove.omega." + bytes([i]), ikm)
-            for i in range(m)
+            for i in range(n)
         ]
         R = matrix_mul(M, omega)
         c = self.suite.hash_to_scalar(
@@ -485,8 +501,8 @@ class Schnorr:
             b"".join(
                 self.encode_point(p)
                 for p in [
-                    M,
-                    Y,
+                    *[m for mrow in M for m in mrow],
+                    *Y,
                     *R,
                 ]
             )
@@ -504,14 +520,14 @@ class Schnorr:
     ) -> bool:
         c, s = sig
         Ms = matrix_mul(M, s)
-        Yc = Y * c
+        Yc = [y * c for y in Y]
         return c == self.suite.hash_to_scalar(
             b"Schnorr.NIZK.Proof",
             b"".join(
                 self.encode_point(p)
                 for p in [
-                    M,
-                    Y,
+                    *[m for mrow in M for m in mrow],
+                    *Y,
                     *(Msi - Yci for Msi, Yci in zip(Ms, Yc)),
                 ]
             )
