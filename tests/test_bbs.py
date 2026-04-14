@@ -68,3 +68,7 @@ def test_schnorr_nizk():
     Y = matrix_mul(M, x)
     proof = schnorr.nizk_prove(M, Y, x, b"test_schnorr_nizk")
     assert schnorr.nizk_verify(M, Y, proof, b"test_schnorr_nizk")
+    assert not schnorr.nizk_verify(M, Y, proof, b"test_schnorr_nizk0")
+    assert not schnorr.nizk_verify(
+        M, matrix_mul(M, [x + 1 for x in x]), proof, b"test_schnorr_nizk"
+    )
