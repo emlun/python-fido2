@@ -30,7 +30,7 @@
 
 import pytest
 
-from fido2.bls12_381 import BBS_SCHNORR, BBS_SCHNORR_SUITE, Schnorr, matrix_mul
+from fido2.bls12_381 import BBS_SCHNORR_SUITE, BbsSchnorr, Schnorr, matrix_mul
 
 
 def test_schnorr_signature():
@@ -72,3 +72,31 @@ def test_schnorr_nizk():
     assert not schnorr.nizk_verify(
         M, matrix_mul(M, [x + 1 for x in x]), proof, b"test_schnorr_nizk"
     )
+
+
+def test_bbs_schnorr():
+    bbs = BbsSchnorr(BBS_SCHNORR_SUITE)
+
+    isk, ipk = bbs.iss_kgen()
+    dsk, dpk = bbs.dev_kgen()
+    attrs = [1, 2, 3]
+    sigma = bbs.issue(isk, dpk, attrs)
+
+    assert bbs.vf_cred(ipk, sigma, dpk, attrs)
+
+    ust, umsg = bbs.show_user_1(ipk, dpk, sigma, attrs, b"Hello, World!", [1])
+    smsg = bbs.show_se_1(ipk, dsk, umsg, b"Hello, World!")
+    tau = bbs.show_user_2(ust, smsg)
+
+    smsg2 = bbs.show_se_1(ipk, dsk, umsg, b"Hello, Worldz!")
+    tau2 = bbs.show_user_2(ust, smsg2)
+
+    assert bbs.verify(ipk, b"Hello, World!", [1], [2], tau)
+    assert not bbs.verify(ipk, b"Hello, World!", [1], [2], tau2)
+    assert not bbs.verify(ipk, b"Hello, World!", [], [], tau)
+    assert not bbs.verify(ipk, b"Hello, World!", [], [2], tau)
+    assert not bbs.verify(ipk, b"Hello, World!", [1], [1], tau)
+    assert not bbs.verify(ipk, b"Hello, World!", [1], [3], tau)
+    assert not bbs.verify(ipk, b"Hello, Worldz!", [1], [2], tau)
+    assert not bbs.verify(ipk, b"Hello, World!", [0, 1], [1, 2], tau)
+    # assert not bbs.verify(ipk * 2, b"Hello, World!", [1], [2], tau)  TODO: implement pairing check

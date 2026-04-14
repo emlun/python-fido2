@@ -186,6 +186,10 @@ class PointAffine:
         )
 
     def __add__(self, q):
+        if isinstance(q, int) and q == 0:
+            # Special case for self + sum(...) with empty sum
+            return self
+
         assert isinstance(q, PointAffine), f"p: {self}, q: {q}"
         assert self.crv is q.crv
         p = self
@@ -291,6 +295,10 @@ class PointProjective:
         return PointProjective(self.x, (-self.y) % self.crv.p, self.z, self.crv)
 
     def __add__(self, q):
+        if isinstance(q, int) and q == 0:
+            # Special case for self + sum(...) with empty sum
+            return self
+
         assert isinstance(q, PointProjective)
         assert self.crv is q.crv
         p = self
@@ -538,7 +546,7 @@ class Schnorr:
 class BbsSchnorr:
     """BBS-Schnorr scheme proposed in https://eprint.iacr.org/2025/1995"""
 
-    def __init__(self, suite: Suite, Sig: Schnorr):
+    def __init__(self, suite: Suite):
         """Setup procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
         assert suite.n == suite.crv_g2.n
 
@@ -546,17 +554,18 @@ class BbsSchnorr:
         self.l = len(self.suite.Hi)
         self.p = suite.n
         self.zero_g1 = suite.crv_g1.zero()
-        self.Sig = Sig
+        self.Sig = Schnorr(suite)
 
     def iss_kgen(self, ikm: Optional[bytes] = None) -> (int, PointProjective):
         """IssKGen procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
         isk = self.suite.sample_scalar(b"IssKGen", ikm)
         ipk = self.suite.g2 * isk
+        return isk, ipk
 
     def dev_kgen(self, ikm: Optional[bytes] = None) -> (int, PointProjective):
         """DevKGen procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
         dsk = self.suite.sample_scalar(b"DevKGen", ikm)
-        dpk = self.H0 * dsk
+        dpk = self.suite.H0 * dsk
         return dsk, dpk
 
     def issue(
@@ -568,7 +577,7 @@ class BbsSchnorr:
     ) -> (PointProjective, int):
         """Issue procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
         e = self.suite.sample_scalar(b"Issue", ikm)
-        C = self.suite.g1 + dpk + sum(H * a for a, H in zip(attrs, self.Hi))
+        C = self.suite.g1 + dpk + sum(H * a for a, H in zip(attrs, self.suite.Hi))
         A = C * modinv((isk + e) % self.p, self.p)
         return A, e
 
@@ -580,23 +589,30 @@ class BbsSchnorr:
         disclosed_attrs: list[int],
         tau: (
             PointProjective,
-            bytes,
+            any,
             PointProjective,
             PointProjective,
             PointProjective,
-            bytes,
+            any,
         ),
     ) -> bool:
         """Verify procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
         dpkbar, pi_se, Abar, Bbar, Cbar, pi_bbs = tau
         non_disclosed_idx = [i for i in range(self.l) if i not in disclosed_idx]
-        if not self.Sig.verify(dpkbar, pi_se, (dpkbar, ctx)):
+        if not self.Sig.verify(dpkbar, pi_se, self.Sig.encode_point(dpkbar) + ctx):
+            return False
+        if len(disclosed_idx) != len(disclosed_attrs):
+            return False
+        if len(pi_bbs[1]) != 4 + len(non_disclosed_idx):
             return False
 
         Y = (
             self.suite.g1
             + dpkbar
-            + sum(self.Hi[i] * disclosed_attrs[i] for i in disclosed_idx)
+            + sum(
+                self.suite.Hi[j] * disclosed_attrs[j]
+                for j, i in enumerate(disclosed_idx)
+            )
         )
 
         return (
@@ -606,8 +622,8 @@ class BbsSchnorr:
                 [
                     [
                         Cbar,
-                        H0,
-                        *(-self.Hi[j] for j in non_disclosed_idx),
+                        self.suite.H0,
+                        *(-self.suite.Hi[j] for j in non_disclosed_idx),
                         *(2 * [self.zero_g1]),
                     ],
                     [*((2 + len(non_disclosed_idx)) * [self.zero_g1]), Cbar, -Abar],
@@ -627,7 +643,7 @@ class BbsSchnorr:
     ) -> bool:
         """VfCred procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
         A, e = sigma
-        C = self.suite.g1 + dpk + sum(H * a for a, H in zip(attrs, self.Hi))
+        C = self.suite.g1 + dpk + sum(H * a for a, H in zip(attrs, self.suite.Hi))
         return (
             (not A.is_zero()) and (True)  # TODO: Check pairing equality
         )
@@ -656,7 +672,7 @@ class BbsSchnorr:
         PointProjective,
     ):
         """ShowUser1 procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
-        assert len(attrs) == len(self.Hi)
+        assert len(attrs) == len(self.suite.Hi)
         assert all(d >= 0 and d < len(attrs) for d in disclose_idx)
         assert 0 not in disclose_idx
 
@@ -674,7 +690,7 @@ class BbsSchnorr:
         ctx: bytes,
     ) -> bytes:
         """ShowSE1 procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
-        smsg = self.Sig.sign_encoded(dsk, self.Sig.encode_point(umsg) + ctx)
+        smsg = self.Sig.sign_encode(dsk, self.Sig.encode_point(umsg) + ctx)
         return smsg
 
     def show_user_2(
@@ -691,8 +707,6 @@ class BbsSchnorr:
             bytes,
         ),
         smsg: bytes,
-        umsg: PointProjective,
-        ctx: bytes,
     ) -> bytes:
         """ShowUser2 procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
         ipk, dpk, dpkbar, r_key, sigma, attrs, ctx, disclose_idx, ikm = ust
@@ -703,18 +717,22 @@ class BbsSchnorr:
         A, e = sigma
         r1 = self.suite.sample_scalar(b"ShowUser2.r1", ikm)
         r2 = self.suite.sample_scalar(b"ShowUser2.r2", ikm)
-        C = self.suite.g1 + dpk + sum(H * a for a, H in zip(attrs, self.Hi))
+        C = self.suite.g1 + dpk + sum(H * a for a, H in zip(attrs, self.suite.Hi))
         Cbar = C * r1
         Abar = A * r2 * r1
         Bbar = Cbar * r2 - Abar * e
-        Y = self.suite.g1 + dpkbar + sum(self.Hi[i] * attrs[i] for i in disclose_idx)
+        Y = (
+            self.suite.g1
+            + dpkbar
+            + sum(self.suite.Hi[i] * attrs[i] for i in disclose_idx)
+        )
 
         pi_bbs = self.Sig.nizk_prove(
             [
                 [
                     Cbar,
-                    H0,
-                    *(-self.Hi[j] for j in non_disclose_idx),
+                    self.suite.H0,
+                    *(-self.suite.Hi[j] for j in non_disclose_idx),
                     *(2 * [self.zero_g1]),
                 ],
                 [*((2 + len(non_disclose_idx)) * [self.zero_g1]), Cbar, -Abar],
@@ -750,4 +768,3 @@ BBS_SCHNORR_SUITE = Suite(
     128,
     SHA256(),
 )
-BBS_SCHNORR = BbsSchnorr(BBS_SCHNORR_SUITE, Schnorr(BBS_SCHNORR_SUITE))
