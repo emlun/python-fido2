@@ -2,11 +2,12 @@
 
 import math
 import os
-from typing import Any, Optional
+from typing import Optional
 
 from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.hashes import SHA256, HashAlgorithm
 
-from . import cbor
+from .arkg import _HTF
 from .utils import sha256
 
 
@@ -34,6 +35,16 @@ def modsqrt(n, primeModulus):
         return s
     else:
         return None
+
+
+def matrix_mul[T](mat: list[list[T]], vec: list[T]) -> list[T]:
+    assert len(mat[0]) == len(vec)
+    assert all(len(mrow) == len(mat[0]) for mrow in mat)
+    return [sum(m * v for m, v in zip(mrow, vec)) for mrow in mat]
+
+
+type PointAffine = "PointAffine"
+type PointProjective = "PoinProjective"
 
 
 class Curve:
@@ -96,6 +107,17 @@ class Curve:
         x = int.from_bytes(sec1[1 : (1 + self.coord_len)], "big")
         y = int.from_bytes(sec1[(1 + self.coord_len) : (1 + self.coord_len * 2)], "big")
         return PointAffine(x, y, self).to_projective()
+
+    def parse_scalar_from(self, b: bytes) -> (int, bytes):
+        return int.from_bytes(b[: self.scalar_len], "big"), b[self.scalar_len :]
+
+    def parse_point_affine_from(self, b: bytes) -> (PointAffine, bytes):
+        L = 1 + 2 * self.coord_len
+        return self.point_from_sec1_uncompressed(b[:L]), b[L:]
+
+    def parse_point_projective_from(self, b: bytes) -> (PointProjective, bytes):
+        p, rest = self.parse_point_affine_from(b)
+        return p.to_projective(), rest
 
 
 class PointAffine:
@@ -310,6 +332,9 @@ class PointProjective:
                 zr = (pzqz_xpzqmxqzp2 * xpzqmxqzp) % self.crv.p
                 return PointProjective(xr, yr, zr, self.crv)
 
+    def __sub__(self, q):
+        return self + (-q)
+
     def __mul__(self, k):
         k = k % self.crv.n
         pPow2 = self
@@ -339,228 +364,350 @@ class PointProjective:
         raise InvalidSignature()
 
 
+class Suite:
+    def __init__(
+        self,
+        crv_g1: Curve,
+        crv_g2: Curve,
+        H0: PointProjective,
+        Hi: list[PointProjective],
+        security_level: int,
+        hash_to_field_hash: HashAlgorithm,
+    ):
+        assert crv_g1.n == crv_g2.n
+        self.n = crv_g1.n
+        self.crv_g1 = crv_g1
+        self.crv_g2 = crv_g2
+        self.g1 = crv_g1.generator
+        self.g2 = crv_g2.generator
+        self.H0 = H0
+        self.Hi = Hi
+        self.security_level = security_level
+        self.hash_to_field_hash = hash_to_field_hash
+
+    def _htf_scalar(self, dst: bytes) -> _HTF:
+        L = math.ceil((math.ceil(math.log2(self.n)) + self.security_level) / 8)
+        return _HTF(dst, self.n, L, self.hash_to_field_hash)
+
+    def or_rand(self, ikm: Optional[bytes], L: Optional[int]) -> bytes:
+        L = L if L is not None else self.security_level * 2 // 8
+        return ikm if ikm is not None else os.urandom(L)
+
+    def sample_scalar(self, dst: bytes, ikm: Optional[bytes]) -> int:
+        return self._htf_scalar(dst).hash_to_field(self.or_rand(ikm, None), 1)[0]
+
+    def hash_to_scalar(self, dst: bytes, msg: bytes) -> int:
+        return self._htf_scalar(dst).hash_to_field(msg, 1)[0]
+
+
+class Schnorr:
+    """Schnorr signature scheme as defined in https://eprint.iacr.org/2025/1995 ,
+    using:
+
+    - hash_to_field as the hash function H,
+    - SEC 1 uncompressed encoding of curve points, and
+    - binary concatenation for combining hash function inputs.
+    """
+
+    def __init__(self, suite: Suite):
+        self.suite = suite
+
+    def kgen(self, ikm: Optional[bytes] = None) -> (int, PointProjective):
+        sk = self.suite.sample_scalar(b"Schnorr.KGen", ikm)
+        pk = self.suite.g1 * sk
+        return sk, pk
+
+    def encode_point(self, p: PointProjective) -> bytes:
+        return p.to_sec1_uncompressed()
+
+    def encode_signature(self, sig: (int, int)) -> bytes:
+        c, s = sig
+        return b"".join(self.suite.crv_g1.scalar_to_big_endian(x) for x in (c, s))
+
+    def parse_signature(self, sig: bytes) -> (int, int):
+        c, sig = self.suite.crv_g1.parse_scalar_from(sig)
+        s, sig = self.suite.crv_g1.parse_scalar_from(sig)
+        assert sig == b""
+        return c, s
+
+    def sign(self, sk: int, m: bytes, ikm: Optional[bytes] = None) -> (int, int):
+        omega = self.suite.sample_scalar(b"Schnorr.Sign", ikm)
+        r = self.suite.g1 * omega
+        c = self.suite.hash_to_scalar(b"Schnorr.Sign", self.encode_point(r) + m)
+        s = (omega + c * sk) % self.suite.n
+        return c, s
+
+    def sign_encode(self, sk: int, m: bytes, ikm: Optional[bytes] = None) -> bytes:
+        return self.encode_signature(self.sign(sk, m, ikm))
+
+    def verify(self, pk: PointProjective, sig: (int, int), m: bytes) -> bool:
+        c, s = sig
+        return c == self.suite.hash_to_scalar(
+            b"Schnorr.Sign",
+            self.encode_point(self.suite.g1 * s - pk * c) + m,
+        )
+
+    def verify_encoded(self, pk: PointProjective, sig: bytes, m: bytes) -> bool:
+        return self.verify(pk, self.parse_signature(sig), m)
+
+    def re_rand_pk(self, pk: PointProjective, r_key: int) -> PointProjective:
+        return pk + self.suite.g1 * r_key
+
+    def adapt_sig(self, sig: (int, int), r_key: int, m: bytes) -> (int, int):
+        c, s = sig
+        return (c, (s + c * r_key) % self.suite.n)
+
+    def nizk_prove(
+        self,
+        M: list[list[PointProjective]],
+        Y: list[PointProjective],
+        x: list[int],
+        ctx: bytes,
+        ikm: Optional[bytes] = None,
+    ) -> (int, list[int]):
+        """Schnorr NIZK as defined in appendix F.1 of https://eprint.iacr.org/2025/1995 ,
+        using:
+
+        - hash_to_field as the hash function H,
+        - SEC 1 uncompressed encoding of curve points, and
+        - binary concatenation for combining hash function inputs.
+        """
+        m = len(M[0])
+        assert len(Y) == m
+        assert len(x) == m
+        omega = [
+            self.suite.sample_scalar(b"Schnorr.NIZK.Prove.omega." + bytes([i]), ikm)
+            for i in range(m)
+        ]
+        R = matrix_mul(M, omega)
+        c = self.suite.hash_to_scalar(
+            b"Schnorr.NIZK.Proof",
+            b"".join(
+                self.encode_point(p)
+                for p in [
+                    M,
+                    Y,
+                    *R,
+                ]
+            )
+            + ctx,
+        )
+        s = [o + (c * x) % self.suite.n for o, x in zip(omega, x)]
+        return c, s
+
+    def nizk_verify(
+        self,
+        M: list[list[PointProjective]],
+        Y: list[PointProjective],
+        sig: (int, list[int]),
+        ctx: bytes,
+    ) -> bool:
+        c, s = sig
+        Ms = matrix_mul(M, s)
+        Yc = Y * c
+        return c == self.suite.hash_to_scalar(
+            b"Schnorr.NIZK.Proof",
+            b"".join(
+                self.encode_point(p)
+                for p in [
+                    M,
+                    Y,
+                    *(Msi - Yci for Msi, Yci in zip(Ms, Yc)),
+                ]
+            )
+            + ctx,
+        )
+
+
 class BbsSchnorr:
     """BBS-Schnorr scheme proposed in https://eprint.iacr.org/2025/1995"""
 
-    def __init__(self, crv: Curve, num_attrs: int):
-        self.crv = crv
-        self.num_attrs = num_attrs
-        self.g1 = crv.generator
+    def __init__(self, suite: Suite, Sig: Schnorr):
+        """Setup procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
+        assert suite.n == suite.crv_g2.n
 
+        self.suite = suite
+        self.l = len(self.suite.Hi)
+        self.p = suite.n
+        self.zero_g1 = suite.crv_g1.zero()
+        self.Sig = Sig
 
-def bbs_schnorr_setup(
-) -> tuple[PointProjective, int]:
-    """Setup procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
-    g1 = crv.generator
-    e = crv.insecure_random_scalar()
-    A = (
-        g1 + dpk + sum((hi * ai for hi, ai in zip(attr_generators, attrs)), crv.zero())
-    ) * modinv((e + sk) % crv.n, crv.n)
-    if A.is_zero():
-        raise ValueError("A was zero")
-    return A, e
+    def iss_kgen(self, ikm: Optional[bytes] = None) -> (int, PointProjective):
+        """IssKGen procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
+        isk = self.suite.sample_scalar(b"IssKGen", ikm)
+        ipk = self.suite.g2 * isk
 
+    def dev_kgen(self, ikm: Optional[bytes] = None) -> (int, PointProjective):
+        """DevKGen procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
+        dsk = self.suite.sample_scalar(b"DevKGen", ikm)
+        dpk = self.H0 * dsk
+        return dsk, dpk
 
-def bbs_schnorr_issue(
-    crv: Curve,
-    sk: int,
-    dpk: PointProjective,
-    attrs: list[int],
-    attr_generators: list[PointProjective],
-) -> tuple[PointProjective, int]:
-    """Issue procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
-    g1 = crv.generator
-    e = crv.insecure_random_scalar()
-    A = (
-        g1 + dpk + sum((hi * ai for hi, ai in zip(attr_generators, attrs)), crv.zero())
-    ) * modinv((e + sk) % crv.n, crv.n)
-    if A.is_zero():
-        raise ValueError("A was zero")
-    return A, e
+    def issue(
+        self,
+        isk: int,
+        dpk: PointProjective,
+        attrs: list[PointProjective],
+        ikm: Optional[bytes] = None,
+    ) -> (PointProjective, int):
+        """Issue procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
+        e = self.suite.sample_scalar(b"Issue", ikm)
+        C = self.suite.g1 + dpk + sum(H * a for a, H in zip(attrs, self.Hi))
+        A = C * modinv((isk + e) % self.p, self.p)
+        return A, e
 
+    def verify(
+        self,
+        ipk: PointProjective,
+        ctx: bytes,
+        disclosed_idx: list[int],
+        disclosed_attrs: list[int],
+        tau: (
+            PointProjective,
+            bytes,
+            PointProjective,
+            PointProjective,
+            PointProjective,
+            bytes,
+        ),
+    ) -> bool:
+        """Verify procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
+        dpkbar, pi_se, Abar, Bbar, Cbar, pi_bbs = tau
+        non_disclosed_idx = [i for i in range(self.l) if i not in disclosed_idx]
+        if not self.Sig.verify(dpkbar, pi_se, (dpkbar, ctx)):
+            return False
 
-def bbs_schnorr_show_user_1(
-    A: PointProjective,
-    e: int,
-    dpk: PointProjective,
-    attrs: list[int],
-    attr_generators: list[PointProjective],
-    pk: PointProjective,
-    disclose_idx: set[int],
-    ctx: bytes,
-):
-    """ShowUser1 procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
-    assert len(attrs) == len(attr_generators)
-    assert all(d >= 0 and d < len(attrs) for d in disclose_idx)
-    assert 0 not in disclose_idx
-
-    crv = CRV_BLS
-    g1 = crv.generator
-    idx = list(range(len(attrs)))
-    undisclosed_idx = set(idx) - disclose_idx
-    undisclosed_idx_nonzero = undisclosed_idx - set([0])
-
-    r1 = crv.insecure_random_scalar()
-    r2 = crv.insecure_random_scalar()
-    r2inv = modinv(r2, crv.n)
-    Abar = A * (r1 * r2inv)
-    D = (
-        g1
-        + dpk
-        + sum((hi * ai for hi, ai in zip(attr_generators[1:], attrs[1:])), crv.zero())
-    ) * r2inv
-    Bbar = (D * r1) + (Abar * (-e))
-    rr1 = crv.insecure_random_scalar()
-    rr2 = crv.insecure_random_scalar()
-    re = crv.insecure_random_scalar()
-    rai = [
-        crv.insecure_random_scalar() if i in undisclosed_idx_nonzero else None
-        for i in idx
-    ]
-    t1 = (D * rr1) + (Abar * re)
-    t2prime = D * rr2 + sum(
-        (attr_generators[i] * rai[i] for i in undisclosed_idx_nonzero), crv.zero()
-    )
-    c_host = sha256(
-        cbor.encode(
-            [
-                Abar.to_sec1_uncompressed(),
-                Bbar.to_sec1_uncompressed(),
-                D.to_sec1_uncompressed(),
-                g1.to_sec1_uncompressed(),
-                g1.to_sec1_uncompressed(),
-                [gen.to_sec1_uncompressed() for gen in attr_generators],
-                len(attr_generators) + 1,
-                t1.to_sec1_uncompressed(),
-                [crv.scalar_to_big_endian(attrs[i]) for i in sorted(disclose_idx)],
-                sorted(disclose_idx),
-                pk.to_sec1_uncompressed(),
-            ]
+        Y = (
+            self.suite.g1
+            + dpkbar
+            + sum(self.Hi[i] * disclosed_attrs[i] for i in disclosed_idx)
         )
-    )
 
-    return (
-        c_host,
-        rr1,
-        r1,
-        rr2,
-        r2,
-        re,
-        e,
-        rai,
-        attrs,
-        disclose_idx,
-        Abar,
-        Bbar,
-        D,
-        t2prime,
-        dpk,
-    )
-
-
-def bbs_schnorr_show_user_2(
-    c_host: bytes,
-    rr1: int,
-    r1: int,
-    rr2: int,
-    r2: int,
-    re: int,
-    e: int,
-    rai: list[int],
-    attrs: list[int],
-    disclose_idx: set[int],
-    Abar: PointProjective,
-    Bbar: PointProjective,
-    D: PointProjective,
-    sa0: int,
-    c: bytes,
-    n: bytes,
-    t2prime: PointProjective,
-    dpk: PointProjective,
-):
-    """ShowUser2 procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
-    assert len(attrs) == len(rai)
-    assert 0 not in disclose_idx
-
-    crv = CRV_BLS
-    g1 = crv.generator
-    idx = list(range(len(attrs)))
-    undisclosed_idx = set(range(len(attrs))) - disclose_idx
-    undisclosed_idx_nonzero = undisclosed_idx - set([0])
-
-    c_int = int.from_bytes(c, "big") % crv.n
-    t_dsk = g1 * sa0 + dpk * c_int
-    t2 = t_dsk + t2prime
-    t2_bin = t2.to_sec1_uncompressed()
-    c2 = int.from_bytes(sha256(n + t2_bin + c_host), "big") % crv.n
-    assert c2 == c_int
-
-    sr1 = (rr1 + c_int * r1) % crv.n
-    sr2 = (rr2 + c_int * r2) % crv.n
-    se = (re - c_int * e) % crv.n
-    sai = [
-        sa0,
-        *[
-            rai[i] - c_int * attrs[i] if i in undisclosed_idx_nonzero else None
-            for i in idx[1:]
-        ],
-    ]
-
-    return Abar, Bbar, D, c_int, sr1, sr2, se, sai, n
-
-
-def bbs_schnorr_vf_cred(
-    Abar: PointProjective,
-    Bbar: PointProjective,
-    D: PointProjective,
-    c: int,
-    sr1: int,
-    sr2: int,
-    se: int,
-    sai: list[int],
-    pk: PointProjective,
-    disclosed_idx: set[int],
-    attrs: list[int | None],
-    attr_generators: list[PointProjective],
-    ctx: bytes,
-    n: bytes,
-):
-    """VfCred procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
-    assert len(attrs) == len(attr_generators)
-    assert len(sai) == len(attr_generators)
-    assert all(d >= 0 and d < len(attr_generators) for d in disclosed_idx)
-
-    crv = CRV_BLS
-    g1 = crv.generator
-    undisclosed_idx = set(range(len(attr_generators))) - disclosed_idx
-
-    t1 = D * sr1 + Abar * se + Bbar * (-c)
-    t2 = (
-        D * sr2
-        + sum((attr_generators[i] * sai[i] for i in undisclosed_idx), crv.zero())
-        + (g1 + sum((attr_generators[i] * attrs[i] for i in disclosed_idx), crv.zero()))
-        * (-c)
-    )
-
-    c_host = sha256(
-        cbor.encode(
-            [
-                Abar.to_sec1_uncompressed(),
-                Bbar.to_sec1_uncompressed(),
-                D.to_sec1_uncompressed(),
-                g1.to_sec1_uncompressed(),
-                g1.to_sec1_uncompressed(),
-                [gen.to_sec1_uncompressed() for gen in attr_generators],
-                len(attr_generators) + 1,
-                t1.to_sec1_uncompressed(),
-                [crv.scalar_to_big_endian(attrs[i]) for i in sorted(disclosed_idx)],
-                sorted(disclosed_idx),
-                pk.to_sec1_uncompressed(),
-            ]
+        return (
+            (not Abar.is_zero())
+            and (True)  # TODO: Check pairing equality
+            and self.Sig.nizk_verify(
+                [
+                    [
+                        Cbar,
+                        H0,
+                        *(-self.Hi[j] for j in non_disclosed_idx),
+                        *(2 * [self.zero_g1]),
+                    ],
+                    [*((2 + len(non_disclosed_idx)) * [self.zero_g1]), Cbar, -Abar],
+                ],
+                [Y, Bbar],
+                pi_bbs,
+                ctx,
+            )
         )
-    )
-    cv = int.from_bytes(sha256(n + t2.to_sec1_uncompressed() + c_host), "big") % crv.n
-    return cv == c
+
+    def vf_cred(
+        self,
+        ipk: PointProjective,
+        sigma: (PointProjective, int),
+        dpk: PointProjective,
+        attrs: list[int],
+    ) -> bool:
+        """VfCred procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
+        A, e = sigma
+        C = self.suite.g1 + dpk + sum(H * a for a, H in zip(attrs, self.Hi))
+        return (
+            (not A.is_zero()) and (True)  # TODO: Check pairing equality
+        )
+
+    def show_user_1(
+        self,
+        ipk: PointProjective,
+        dpk: PointProjective,
+        sigma: (PointProjective, int),
+        attrs: list[int],
+        ctx: bytes,
+        disclose_idx: list[int],
+        ikm: Optional[bytes] = None,
+    ) -> (
+        (
+            PointProjective,
+            PointProjective,
+            PointProjective,
+            int,
+            (PointProjective, int),
+            list[int],
+            bytes,
+            list[int],
+            bytes,
+        ),
+        PointProjective,
+    ):
+        """ShowUser1 procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
+        assert len(attrs) == len(self.Hi)
+        assert all(d >= 0 and d < len(attrs) for d in disclose_idx)
+        assert 0 not in disclose_idx
+
+        r_key = self.suite.sample_scalar(b"ShowUser1.r_key", ikm)
+        dpkbar = self.Sig.re_rand_pk(dpk, r_key)
+        umsg = dpkbar
+        ust = (ipk, dpk, dpkbar, r_key, sigma, attrs, ctx, disclose_idx, ikm)
+        return ust, umsg
+
+    def show_se_1(
+        self,
+        ipk: PointProjective,
+        dsk: int,
+        umsg: PointProjective,
+        ctx: bytes,
+    ) -> bytes:
+        """ShowSE1 procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
+        smsg = self.Sig.sign_encoded(dsk, self.Sig.encode_point(umsg) + ctx)
+        return smsg
+
+    def show_user_2(
+        self,
+        ust: (
+            PointProjective,
+            PointProjective,
+            PointProjective,
+            int,
+            (PointProjective, int),
+            list[int],
+            bytes,
+            list[int],
+            bytes,
+        ),
+        smsg: bytes,
+        umsg: PointProjective,
+        ctx: bytes,
+    ) -> bytes:
+        """ShowUser2 procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
+        ipk, dpk, dpkbar, r_key, sigma, attrs, ctx, disclose_idx, ikm = ust
+        non_disclose_idx = [i for i in range(self.l) if i not in disclose_idx]
+        pi_se = self.Sig.adapt_sig(
+            self.Sig.parse_signature(smsg), r_key, self.Sig.encode_point(dpkbar) + ctx
+        )
+        A, e = sigma
+        r1 = self.suite.sample_scalar(b"ShowUser2.r1", ikm)
+        r2 = self.suite.sample_scalar(b"ShowUser2.r2", ikm)
+        C = self.suite.g1 + dpk + sum(H * a for a, H in zip(attrs, self.Hi))
+        Cbar = C * r1
+        Abar = A * r2 * r1
+        Bbar = Cbar * r2 - Abar * e
+        Y = self.suite.g1 + dpkbar + sum(self.Hi[i] * attrs[i] for i in disclose_idx)
+
+        pi_bbs = self.Sig.nizk_prove(
+            [
+                [
+                    Cbar,
+                    H0,
+                    *(-self.Hi[j] for j in non_disclose_idx),
+                    *(2 * [self.zero_g1]),
+                ],
+                [*((2 + len(non_disclose_idx)) * [self.zero_g1]), Cbar, -Abar],
+            ],
+            [Y, Bbar],
+            [modinv(r1, self.p), r_key, *(attrs[j] for j in non_disclose_idx), r2, e],
+            ctx,
+        )
+        return dpkbar, pi_se, Abar, Bbar, Cbar, pi_bbs
 
 
 CRV_BLS = Curve(
@@ -576,3 +723,15 @@ CRV_BLS = Curve(
         0x08B3F481E3AAA0F1A09E30ED741D8AE4FCF5E095D5D00AF600DB18CB2C04B3EDD03CC744A2888AE40CAA232946C5E7E1,
     ),
 )
+
+BBS_SCHNORR_SUITE = Suite(
+    CRV_BLS,
+    # TODO: Actually use G2
+    CRV_BLS,
+    # TODO: Use distinct generators
+    CRV_BLS.generator,
+    3 * [CRV_BLS.generator],
+    128,
+    SHA256(),
+)
+BBS_SCHNORR = BbsSchnorr(BBS_SCHNORR_SUITE, Schnorr(BBS_SCHNORR_SUITE))
