@@ -436,7 +436,7 @@ class Schnorr:
 
     def kgen(self, ikm: Optional[bytes] = None) -> (int, PointProjective):
         sk = self.suite.sample_scalar(b"Schnorr.KGen", ikm)
-        pk = self.suite.g1 * sk
+        pk = self.suite.H0 * sk
         return sk, pk
 
     def encode_point(self, p: PointProjective) -> bytes:
@@ -454,7 +454,7 @@ class Schnorr:
 
     def sign(self, sk: int, m: bytes, ikm: Optional[bytes] = None) -> (int, int):
         omega = self.suite.sample_scalar(b"Schnorr.Sign", ikm)
-        r = self.suite.g1 * omega
+        r = self.suite.H0 * omega
         c = self.suite.hash_to_scalar(b"Schnorr.Sign", self.encode_point(r) + m)
         s = (omega + c * sk) % self.suite.n
         return c, s
@@ -466,14 +466,14 @@ class Schnorr:
         c, s = sig
         return c == self.suite.hash_to_scalar(
             b"Schnorr.Sign",
-            self.encode_point(self.suite.g1 * s - pk * c) + m,
+            self.encode_point(self.suite.H0 * s - pk * c) + m,
         )
 
     def verify_encoded(self, pk: PointProjective, sig: bytes, m: bytes) -> bool:
         return self.verify(pk, self.parse_signature(sig), m)
 
     def re_rand_pk(self, pk: PointProjective, r_key: int) -> PointProjective:
-        return pk + self.suite.g1 * r_key
+        return pk + self.suite.H0 * r_key
 
     def adapt_sig(self, sig: (int, int), r_key: int, m: bytes) -> (int, int):
         c, s = sig

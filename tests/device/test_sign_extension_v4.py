@@ -707,22 +707,20 @@ def test_assert_uv_required(ctap2, on_keepalive, credential_cache, sign):
 def test_assert_bbs_schnorr(credential_cache, sign):
     bbs = BbsSchnorr(BBS_SCHNORR_SUITE)
 
-    isk, ipk = bbs.iss_kgen()
-    dsk, dpk = bbs.dev_kgen()
-    attrs = [1, 2, 3]
-    sigma = bbs.issue(isk, dpk, attrs)
-
-    assert bbs.vf_cred(ipk, sigma, dpk, attrs)
-
-    ust, umsg = bbs.show_user_1(ipk, dpk, sigma, attrs, b"Hello, World!", [1])
-    smsg = bbs.show_se_1(ipk, dsk, umsg, b"Hello, World!")
-
     algorithms = [-65600]
     cred = credential_cache.make_cred_or_skip(
         lambda cred: cred.algorithm in algorithms and cred.flags == 0b000,
         algorithms,
     )
     assert cred.algorithm in algorithms
+    dpk = bbs.suite.crv_g1.point_from_cose(cred.public_key)
+
+    isk, ipk = bbs.iss_kgen()
+    attrs = [1, 2, 3]
+    sigma = bbs.issue(isk, dpk, attrs)
+    assert bbs.vf_cred(ipk, sigma, dpk, attrs)
+
+    ust, umsg = bbs.show_user_1(ipk, dpk, sigma, attrs, b"Hello, World!", [1])
 
     tbs = bbs.Sig.encode_point(umsg) + b"Hello, World!"
     response, signature = sign(cred, tbs)
@@ -733,4 +731,4 @@ def test_assert_bbs_schnorr(credential_cache, sign):
     smsg = signature
     tau = bbs.show_user_2(ust, smsg)
 
-    assert not bbs.verify(ipk, b"Hello, World!", [1], [2], tau)
+    assert bbs.verify(ipk, b"Hello, World!", [1], [2], tau)
