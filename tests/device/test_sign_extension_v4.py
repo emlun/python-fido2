@@ -11,6 +11,7 @@ from fido2.ctap import CtapError
 from fido2.ctap2.pin import ClientPin
 from fido2.utils import sha256
 from fido2.webauthn import AttestationObject
+from fido2.bls12_381 import BBS_SCHNORR_SUITE, BbsSchnorr, Schnorr, matrix_mul
 
 from . import TEST_PIN
 
@@ -701,3 +702,35 @@ def test_assert_uv_required(ctap2, on_keepalive, credential_cache, sign):
     with pytest.raises(CtapError) as exc_info:
         sign(cred, tbs, additional_args=args, up=True)
     assert exc_info.value.code == CtapError.ERR.PUAT_REQUIRED
+
+
+def test_assert_bbs_schnorr(credential_cache, sign):
+    bbs = BbsSchnorr(BBS_SCHNORR_SUITE)
+
+    isk, ipk = bbs.iss_kgen()
+    dsk, dpk = bbs.dev_kgen()
+    attrs = [1, 2, 3]
+    sigma = bbs.issue(isk, dpk, attrs)
+
+    assert bbs.vf_cred(ipk, sigma, dpk, attrs)
+
+    ust, umsg = bbs.show_user_1(ipk, dpk, sigma, attrs, b"Hello, World!", [1])
+    smsg = bbs.show_se_1(ipk, dsk, umsg, b"Hello, World!")
+
+    algorithms = [-65600]
+    cred = credential_cache.make_cred_or_skip(
+        lambda cred: cred.algorithm in algorithms and cred.flags == 0b000,
+        algorithms,
+    )
+    assert cred.algorithm in algorithms
+
+    tbs = bbs.Sig.encode_point(umsg) + b"Hello, World!"
+    response, signature = sign(cred, tbs)
+
+    assert signature is not None
+    cred.public_key.verify(tbs, signature)
+
+    smsg = signature
+    tau = bbs.show_user_2(ust, smsg)
+
+    assert not bbs.verify(ipk, b"Hello, World!", [1], [2], tau)
