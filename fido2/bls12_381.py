@@ -164,7 +164,7 @@ class PointAffine:
         return int.to_bytes(x, self.crv.coord_len, "big")
 
     def to_big_endian_coordinates(self):
-        assert not self.is_zero()
+        assert not self.is_zero
         return (
             self.coordinate_to_big_endian(self.x),
             self.coordinate_to_big_endian(self.y),
