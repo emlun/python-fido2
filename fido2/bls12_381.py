@@ -5,7 +5,7 @@ import os
 from typing import Optional
 
 from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives.hashes import SHA256, HashAlgorithm
+from cryptography.hazmat.primitives.hashes import SHA256, Hash, HashAlgorithm
 
 from .arkg import _HTF
 from .utils import sha256
@@ -426,7 +426,6 @@ class Schnorr:
     """Schnorr signature scheme as defined in https://eprint.iacr.org/2025/1995 ,
     using:
 
-    - hash_to_field as the hash function H,
     - SEC 1 uncompressed encoding of curve points, and
     - binary concatenation for combining hash function inputs.
     """
@@ -444,33 +443,69 @@ class Schnorr:
 
     def encode_signature(self, sig: (int, int)) -> bytes:
         c, s = sig
-        return b"".join(self.suite.crv_g1.scalar_to_big_endian(x) for x in (c, s))
+        return b"".join(self.suite.crv_g1.scalar_to_big_endian(x) for x in (s, c))
 
     def parse_signature(self, sig: bytes) -> (int, int):
-        c, sig = self.suite.crv_g1.parse_scalar_from(sig)
         s, sig = self.suite.crv_g1.parse_scalar_from(sig)
+        c, sig = self.suite.crv_g1.parse_scalar_from(sig)
         assert sig == b""
         return c, s
 
-    def sign(self, sk: int, m: bytes, ikm: Optional[bytes] = None) -> (int, int):
+    def sign_htf(self, sk: int, m: bytes, ikm: Optional[bytes] = None) -> (int, int):
+        """
+        Sign using hash_to_field as the hash function H.
+        """
         omega = self.suite.sample_scalar(b"Schnorr.Sign", ikm)
         r = self.suite.H0 * omega
         c = self.suite.hash_to_scalar(b"Schnorr.Sign", self.encode_point(r) + m)
         s = (omega + c * sk) % self.suite.n
         return c, s
 
-    def sign_encode(self, sk: int, m: bytes, ikm: Optional[bytes] = None) -> bytes:
-        return self.encode_signature(self.sign(sk, m, ikm))
+    def sign_sha256(self, sk: int, m: bytes) -> (int, int):
+        """
+        Sign using SHA-256 as the hash function H, with rejection sampling to fall under the group order.
+        """
+        while True:
+            omega = self.suite.sample_scalar(b"Schnorr.Sign", None)
+            r = self.suite.H0 * omega
+            h = Hash(SHA256())
+            h.update(self.encode_point(r) + m)
+            c = int.from_bytes(h.finalize(), "big")
+            if c < self.suite.n:
+                s = (omega + c * sk) % self.suite.n
+                return c, s
 
-    def verify(self, pk: PointProjective, sig: (int, int), m: bytes) -> bool:
+    def sign_htf_encode(self, sk: int, m: bytes, ikm: Optional[bytes] = None) -> bytes:
+        return self.encode_signature(self.sign_htf(sk, m, ikm))
+
+    def sign_sha256_encode(self, sk: int, m: bytes) -> bytes:
+        return self.encode_signature(self.sign_sha256(sk, m))
+
+    def verify_htf(self, pk: PointProjective, sig: (int, int), m: bytes) -> bool:
+        """
+        Verify using hash_to_field as the hash function H.
+        """
         c, s = sig
         return c == self.suite.hash_to_scalar(
             b"Schnorr.Sign",
             self.encode_point(self.suite.H0 * s - pk * c) + m,
         )
 
-    def verify_encoded(self, pk: PointProjective, sig: bytes, m: bytes) -> bool:
-        return self.verify(pk, self.parse_signature(sig), m)
+    def verify_htf_encoded(self, pk: PointProjective, sig: bytes, m: bytes) -> bool:
+        return self.verify_htf(pk, self.parse_signature(sig), m)
+
+    def verify_sha256(self, pk: PointProjective, sig: bytes, m: bytes) -> bool:
+        """
+        Verify using SHA-256 as the hash function H, rejecting is the hash is greater than the group order.
+        """
+        c, s = sig
+        h = Hash(SHA256())
+        h.update(self.encode_point(self.suite.H0 * s - pk * c) + m)
+        c2 = int.from_bytes(h.finalize(), "big")
+        return c2 < self.suite.n and c == c2
+
+    def verify_sha256_encoded(self, pk: PointProjective, sig: bytes, m: bytes) -> bool:
+        return self.verify_sha256(pk, self.parse_signature(sig), m)
 
     def re_rand_pk(self, pk: PointProjective, r_key: int) -> PointProjective:
         return pk + self.suite.H0 * r_key
@@ -599,7 +634,9 @@ class BbsSchnorr:
         """Verify procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
         dpkbar, pi_se, Abar, Bbar, Cbar, pi_bbs = tau
         non_disclosed_idx = [i for i in range(self.l) if i not in disclosed_idx]
-        if not self.Sig.verify(dpkbar, pi_se, self.Sig.encode_point(dpkbar) + ctx):
+        if not self.Sig.verify_sha256(
+            dpkbar, pi_se, self.Sig.encode_point(dpkbar) + ctx
+        ):
             return False
         if len(disclosed_idx) != len(disclosed_attrs):
             return False
@@ -690,7 +727,7 @@ class BbsSchnorr:
         ctx: bytes,
     ) -> bytes:
         """ShowSE1 procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
-        smsg = self.Sig.sign_encode(dsk, self.Sig.encode_point(umsg) + ctx)
+        smsg = self.Sig.sign_sha256_encode(dsk, self.Sig.encode_point(umsg) + ctx)
         return smsg
 
     def show_user_2(

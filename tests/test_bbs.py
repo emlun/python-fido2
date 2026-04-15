@@ -33,28 +33,36 @@ import pytest
 from fido2.bls12_381 import BBS_SCHNORR_SUITE, BbsSchnorr, Schnorr, matrix_mul
 
 
-def test_schnorr_signature():
+def test_schnorr_signature_htf():
     schnorr = Schnorr(BBS_SCHNORR_SUITE)
     sk, pk = schnorr.kgen()
     msg = b"Hello, World!"
-    sig = schnorr.sign_encode(sk, msg)
-    assert schnorr.verify_encoded(pk, sig, msg)
+    sig = schnorr.sign_htf_encode(sk, msg)
+    assert schnorr.verify_htf_encoded(pk, sig, msg)
+
+
+def test_schnorr_signature_sha256():
+    schnorr = Schnorr(BBS_SCHNORR_SUITE)
+    sk, pk = schnorr.kgen()
+    msg = b"Hello, World!"
+    sig = schnorr.sign_sha256_encode(sk, msg)
+    assert schnorr.verify_sha256_encoded(pk, sig, msg)
 
 
 def test_schnorr_signature_deterministic():
     schnorr = Schnorr(BBS_SCHNORR_SUITE)
     sk, pk = schnorr.kgen(ikm=b"test_schnorr_signature_deterministic|kgen")
     msg = b"Hello, World!"
-    sig = schnorr.sign_encode(
+    sig = schnorr.sign_htf_encode(
         sk, msg, ikm=b"test_schnorr_signature_deterministic|sign_encode"
     )
-    sig2 = schnorr.sign_encode(
+    sig2 = schnorr.sign_htf_encode(
         sk, msg, ikm=b"test_schnorr_signature_deterministic|sign_encode|2"
     )
-    assert schnorr.verify_encoded(pk, sig, msg)
-    assert schnorr.verify_encoded(pk, sig2, msg)
+    assert schnorr.verify_htf_encoded(pk, sig, msg)
+    assert schnorr.verify_htf_encoded(pk, sig2, msg)
     assert sig == bytes.fromhex(
-        "6f1dfc8ec105e7540b70f48ecb7fb6f2c0ec6d98efb6c56d6b092f1f1084ee366af6e9503bc1e6a40706e44012e7b49f0afa13e9f4e559c6226d5e513d24a465"
+        "6af6e9503bc1e6a40706e44012e7b49f0afa13e9f4e559c6226d5e513d24a4656f1dfc8ec105e7540b70f48ecb7fb6f2c0ec6d98efb6c56d6b092f1f1084ee36"
     )
     assert sig != sig2
 

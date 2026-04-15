@@ -11,7 +11,7 @@ from fido2.ctap import CtapError
 from fido2.ctap2.pin import ClientPin
 from fido2.utils import sha256
 from fido2.webauthn import AttestationObject
-from fido2.bls12_381 import BBS_SCHNORR_SUITE, BbsSchnorr, Schnorr, matrix_mul
+from fido2.bls12_381 import BBS_SCHNORR_SUITE, BbsSchnorr
 
 from . import TEST_PIN
 
@@ -713,7 +713,21 @@ def test_assert_bbs_schnorr(credential_cache, sign):
         algorithms,
     )
     assert cred.algorithm in algorithms
-    dpk = bbs.suite.crv_g1.point_from_cose(cred.public_key)
+    dpk_rfc8235 = bbs.suite.crv_g1.point_from_cose(cred.public_key)
+
+    # RFC 8235 computes the public key as `A = G x [a]` with generator G and secret key a,
+    # and the signature as `r = v - a*c` with random nonce v, and challenge hash c,
+    # and therefore the verification checks the identity `V = G x [r] + A x [c]` with `V = G x [v]`.
+    # In https://eprint.iacr.org/2025/1995.pdf the Schnorr signature scheme is written with
+    # public key still `pk = sk*H0` with secret key sk and generator H0,
+    # but signature as `s = ω + c*sk` with nonce ω,
+    # and therefore verification instead checks the identity `R = s*H0 - c*pk` with `R = ω*H0`.
+    # Note the flipped signs between signature formulations.
+    # Luckily, the two are compatible and can be translated between by simply negating the public key.
+    # Identifying `s' = r = v - a*c = ω - c*sk` and `pk = -A = G x [-a] = (-sk)*H0` we get:
+    # `R = s'*H0 - c*(-pk) = (ω*H0 - c*sk*H0) - c*pk = (ω*H0 - c*sk*H0) - c*(-sk)*H0 = ω*H0 - c*sk*H0 + c*sk*H0 = ω*H0`
+    # so the verification identity `R = s*H0 - c*pk` holds for the signature `r = v - a*c` if the public key is negated.
+    dpk = -dpk_rfc8235
 
     isk, ipk = bbs.iss_kgen()
     attrs = [1, 2, 3]
@@ -724,9 +738,12 @@ def test_assert_bbs_schnorr(credential_cache, sign):
 
     tbs = bbs.Sig.encode_point(umsg) + b"Hello, World!"
     response, signature = sign(cred, tbs)
-
     assert signature is not None
+
+    # Non-negated public key with verification equation [r]G+[c]A
     cred.public_key.verify(tbs, signature)
+    # Negated public key with verification equation s*H0-c*pk
+    assert bbs.Sig.verify_sha256_encoded(dpk, signature, tbs)
 
     smsg = signature
     tau = bbs.show_user_2(ust, smsg)
