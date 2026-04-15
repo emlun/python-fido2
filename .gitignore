@@ -16,3 +16,7 @@ htmlcov/
 .tox/
 .coverage
 .coverage.*
+
+
+/node_modules/
+/package-lock.json

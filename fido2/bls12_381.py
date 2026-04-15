@@ -596,6 +596,7 @@ class BbsSchnorr:
         """IssKGen procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
         isk = self.suite.sample_scalar(b"IssKGen", ikm)
         ipk = self.suite.g2 * isk
+        print("isk: " + str(isk))
         return isk, ipk
 
     def dev_kgen(self, ikm: Optional[bytes] = None) -> (int, PointProjective):
@@ -653,6 +654,11 @@ class BbsSchnorr:
             )
         )
 
+        print("Abar: " + Abar.to_sec1_uncompressed().hex())
+        print("ipk: " + ipk.to_sec1_uncompressed().hex())
+        print("Bbar: " + Bbar.to_sec1_uncompressed().hex())
+        print("G2: " + self.suite.g2.to_sec1_uncompressed().hex())
+
         return (
             (not Abar.is_zero())
             and (True)  # TODO: Check pairing equality
@@ -682,6 +688,11 @@ class BbsSchnorr:
         """VfCred procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
         A, e = sigma
         C = self.suite.g1 + dpk + sum(H * a for a, H in zip(attrs, self.suite.Hi))
+        print("A: " + A.to_sec1_uncompressed().hex())
+        print("ipk: " + ipk.to_sec1_uncompressed().hex())
+        print("e: " + str(e))
+        print("G2: " + self.suite.g2.to_sec1_uncompressed().hex())
+        print("C: " + C.to_sec1_uncompressed().hex())
         return (
             (not A.is_zero()) and (True)  # TODO: Check pairing equality
         )
