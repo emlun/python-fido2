@@ -613,12 +613,11 @@ class Rational:
 
 
 class Curve:
-    def __init__(self, field, a, b, n, h, generator):
+    def __init__(self, field, a, b, n, generator):
         self.field = field
         self.a = a
         self.b = b
         self.n = n
-        self.h = h
         self.scalar_len = math.ceil(math.log2(n) / 8)
         if generator is not None:
             (gx, gy) = generator
@@ -645,7 +644,6 @@ class Curve:
             a=crv.a * crv.field.mono(4),
             b=crv.b * crv.field.mono(6),
             n=crv.n,
-            h=crv.h,
             generator=generator,
         )
 
@@ -1614,7 +1612,8 @@ def opt_ate_pairing(
 t = -(2**63) - 2**62 - 2**60 - 2**57 - 2**48 - 2**16
 p = (t - 1) ** 2 * (t**4 - t**2 + 1) // 3 + t
 r = t**4 - t**2 + 1
-h = 0x5D543A95414E7F1091D50792876A202CD91DE4547085ABAA68A205B2E5A7DDFA628F1CB4D9E82EF21537E293A6691AE1616EC6E786F0C70CF1C38E31C7238E5
+h_g1 = 0x396c8c005555e1568c00aaab0000aaab
+h_g2 = 0x5D543A95414E7F1091D50792876A202CD91DE4547085ABAA68A205B2E5A7DDFA628F1CB4D9E82EF21537E293A6691AE1616EC6E786F0C70CF1C38E31C7238E5
 assert (
     p
     == 0x1A0111EA397FE69A4B1BA7B6434BACD764774B84F38512BF6730D2A0F6B0F6241EABFFFEB153FFFFB9FEFFFFFFFFAAAB
@@ -1631,7 +1630,6 @@ CRV_BLS = Curve(
     a=gfp12.zero(),
     b=4 * gfp12.one(),
     n=r,
-    h=h,
     generator=None,
 )
 CRV_BLS_G1 = Curve(
@@ -1639,7 +1637,6 @@ CRV_BLS_G1 = Curve(
     a=gfp.zero(),
     b=4 * gfp.one(),
     n=r,
-    h=0x396C8C005555E1568C00AAAB0000AAAB,
     generator=(
         0x17F1D3A73197D7942695638C4FA9AC0FC3688C4F9774B905A14E3A3F171BAC586C55E83FF97A1AEFFB3AF00ADB22C6BB,
         0x08B3F481E3AAA0F1A09E30ED741D8AE4FCF5E095D5D00AF600DB18CB2C04B3EDD03CC744A2888AE40CAA232946C5E7E1,
@@ -1650,7 +1647,6 @@ CRV_BLS_G2 = Curve(
     a=gfp2.zero(),
     b=4 * (gfp2.mono(1) + gfp2.mono(0)),
     n=r,
-    h=h,
     generator=(
         [
             0x024AA2B2F08F0A91260805272DC51051C6E47AD4FA403B02B4510B647AE3D1770BAC0326A805BBEFD48056C8C121BDB8,

@@ -41,8 +41,8 @@ def test_pfb_ex_4_1_1():
     k = 2
     f = PrimeField(q)
     fq2 = ExtensionField(f, [1, 0, 1])
-    crv = Curve(field=f, a=0, b=4, n=r, h=h, generator=None)
-    crv2 = Curve(field=fq2, a=0, b=4, n=r**2, h=h, generator=None)
+    crv = Curve(field=f, a=0, b=4, n=r, generator=None)
+    crv2 = Curve(field=fq2, a=0, b=4, n=r**2, generator=None)
 
     points = [
         crv2.zero().to_affine(),
@@ -129,9 +129,9 @@ def test_pfb_ex_4_3_1():
     k = 2
     fq = PrimeField(q)
     fq2 = ExtensionField(fq, [1, 0, 1])
-    crv = Curve(field=fq, a=0, b=4, n=r, h=h, generator=None)
-    crv2 = Curve(field=fq2, a=0, b=4, n=r**2, h=h, generator=None)
-    tcrv = Curve(field=fq, a=0, b=-4, n=r, h=h, generator=None)
+    crv = Curve(field=fq, a=0, b=4, n=r, generator=None)
+    crv2 = Curve(field=fq2, a=0, b=4, n=r**2, generator=None)
+    tcrv = Curve(field=fq, a=0, b=-4, n=r, generator=None)
 
     def psi_inv(p):
         if p.is_zero():
@@ -165,7 +165,6 @@ def test_pfb_ex_4_3_2():
         a=0,
         b=72,
         n=r,
-        h=84 // r,
         generator=(35 * ef.mono(4), 42 * ef.mono(3)),
     )
     tcrv, twistp, untwistp = crv.twist(generator=(ef.el([33]), ef.el([19])))
@@ -195,7 +194,7 @@ def test_pfb_ex_5_0_1():
     q = 23
     k = 1
     fq = PrimeField(q)
-    crv = Curve(field=fq, a=17, b=6, n=5, h=30 // 5, generator=(0, 0))
+    crv = Curve(field=fq, a=17, b=6, n=5, generator=(0, 0))
     P = PointAffine(fq.el(10), fq.el(7), crv)
 
     fx = ExtensionField(fq, None)
@@ -232,7 +231,6 @@ def test_pfb_ex_5_1_1():
         a=fq2.el([-1]),
         b=fq2.zero(),
         n=r,
-        h=24 // r,
         generator=(fq2.zero(), fq2.zero()),
     )
     P = PointAffine(fq2.el([2]), fq2.el([11]), crv)
@@ -273,7 +271,7 @@ def test_pfb_ex_5_2_1():
     h = 4
     fq = PrimeField(q)
     fq2 = ExtensionField(fq, fq.monoup(2) + 2)
-    crv2 = Curve(fq2, a=0, b=-3, n=r**2, h=h, generator=(fq2.zero(), fq2.zero()))
+    crv2 = Curve(fq2, a=0, b=-3, n=r**2, generator=(fq2.zero(), fq2.zero()))
     points = [
         crv2.zero().to_affine(),
         *[
@@ -370,7 +368,7 @@ def test_pfb_ex_5_2_2():
     h = 4
     fq = PrimeField(q)
     fq2 = ExtensionField(fq, fq.monoup(2) + 2)
-    crv2 = Curve(fq2, a=0, b=-3, n=r**2, h=h, generator=(fq2.zero(), fq2.zero()))
+    crv2 = Curve(fq2, a=0, b=-3, n=r**2, generator=(fq2.zero(), fq2.zero()))
     P = PointAffine(fq2.el([3]), fq2.el([2]), crv2)
     Q = PointAffine(fq2.el([1, 1]), fq2.el([2, 4]), crv2)
     R = PointAffine(fq2.el([0, 2]), fq2.el([2, 1]), crv2)
@@ -400,7 +398,6 @@ def test_pfb_ex_5_2_3():
         a=fq2.el([14]),
         b=fq2.el([3]),
         n=r,
-        h=20 // r,
         generator=(fq2.zero(), fq2.zero()),
     )
     P = PointAffine(fq2.el([17]), fq2.el([9]), crv)
@@ -426,7 +423,6 @@ def test_pfb_ex_5_3_1():
         a=fq4.el([21]),
         b=fq4.el([15]),
         n=r,
-        h=(3**3 * 5**4 * 17**2) // r,
         generator=(fq4.zero(), fq4.zero()),
     )
     P = PointAffine(fq4.el([45]), fq4.el([23]), crv)
@@ -515,7 +511,6 @@ def test_pfb_ex_7_1_1():
         a=fq4.el([21]),
         b=fq4.el([15]),
         n=r,
-        h=(3**3 * 5**4 * 17**2) // r,
         generator=(fq4.zero(), fq4.zero()),
     )
     P = PointAffine(fq4.el([45]), fq4.el([23]), crv)
@@ -580,7 +575,6 @@ def test_pfb_ex_7_1_2():
         a=fq4.el([21]),
         b=fq4.el([15]),
         n=r,
-        h=(3**3 * 5**4 * 17**2) // r,
         generator=(fq4.zero(), fq4.zero()),
     )
     P = PointAffine(fq4.el([45]), fq4.el([23]), crv)
@@ -635,7 +629,6 @@ def test_pfb_ex_7_1_2_opt():
         a=fq4.el([21]),
         b=fq4.el([15]),
         n=r,
-        h=(3**3 * 5**4 * 17**2) // r,
         generator=(fq4.zero(), fq4.zero()),
     )
     P = PointAffine(fq4.el([45]), fq4.el([23]), crv)
