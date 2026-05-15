@@ -749,3 +749,4 @@ def test_assert_bbs_schnorr(credential_cache, sign):
     tau = bbs.show_user_2(ust, smsg)
 
     assert bbs.verify(ipk, b"Hello, World!", [1], [2], tau)
+    assert False, "Success, but please use noble.js to verify the BBS pairing"
