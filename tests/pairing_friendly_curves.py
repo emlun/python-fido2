@@ -143,8 +143,6 @@ def test_pfb_ex_4_3_1():
             return p.crv.zero()
         return PointAffine(-p.x, -fq2.mono(1) * p.y, p.crv)
 
-    tcrv2, twistp, untwistp = crv2.twist()
-
     print(crv2.point([8], [0, 1]))
     print(psi_inv(crv2.point([8], [0, 1])))
     print(crv.point(3, 10))
@@ -167,9 +165,9 @@ def test_pfb_ex_4_3_2():
         n=r,
         generator=(35 * ef.mono(4), 42 * ef.mono(3)),
     )
-    tcrv, twistp, untwistp = crv.twist(generator=(ef.el([33]), ef.el([19])))
+    tcrv = crv.twisted
 
-    subgroup = [twistp(crv.generator.to_affine()) * i for i in range(r)]
+    subgroup = [crv.generator.to_affine().twist() * i for i in range(r)]
     assert subgroup == [tcrv.generator * i for i in range(r)]
     assert subgroup == [
         tcrv.zero(),
@@ -183,7 +181,7 @@ def test_pfb_ex_4_3_2():
 
     for i in range(crv.n + 1):
         gi = crv.generator * i
-        tgi = untwistp(twistp(crv.generator.to_affine()) * i)
+        tgi = crv.generator.to_affine().twist().untwist() * i
         assert gi == tgi, (gi, tgi)
 
 

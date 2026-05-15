@@ -199,17 +199,16 @@ class ExtensionField:
     def ext_degree(self):
         return self.modulus.degree() * self.base.ext_degree()
 
-    def el(self, coeffs: Polynomial | list[int] | list[Polynomial]) -> Polynomial:
+    def el(self, coeffs: int | Polynomial | list[int] | list[Polynomial]) -> Polynomial:
         """Wrap `coeffs` as a little-endian polynomial over the field."""
         if isinstance(coeffs, Polynomial):
-            assert coeffs.cfield is self.base, (coeffs, coeffs.cfield, self)
+            assert coeffs.cfield is self.base, {'coeffs': coeffs, 'coeffs.cfield': coeffs.cfield, 'self': self}
             return (
                 coeffs
                 if coeffs.pfield is self
                 else Polynomial(coeffs.coeffs, coeffs.cfield, self)
             )
-        else:
-            assert isinstance(coeffs, list), (coeffs, self)
+        elif isinstance(coeffs, list):
             assert isinstance(coeffs[0], (int, Polynomial)), (coeffs, self)
             if isinstance(coeffs[0], Polynomial):
                 assert coeffs[0].pfield is self.base, (
@@ -218,6 +217,8 @@ class ExtensionField:
             return Polynomial(
                 [self.base.el(a) for a in coeffs], self.base, self
             ).reduce()
+        else:
+            return Polynomial([self.base.el(coeffs)], self.base, self).reduce()
 
     def pol(self, coeffs: list[Polynomial]) -> Polynomial:
         return Polynomial(coeffs, self, None)
@@ -510,6 +511,7 @@ class Polynomial:
         result = self.pfield.one()
 
         while e > 0:
+            print("Polynomial pow", e, result)
             if e % 2 != 0:
                 result *= squared
             squared = squared * squared
@@ -613,53 +615,37 @@ class Rational:
 
 
 class Curve:
-    def __init__(self, field, a, b, n, generator):
+    def __init__(self, field, a, b, n, generator, twisted=None, twisted_generator=None):
         self.field = field
         self.a = a
         self.b = b
         self.n = n
         self.scalar_len = math.ceil(math.log2(n) / 8)
+
         if generator is not None:
             (gx, gy) = generator
             # print(generator)
             self.generator = PointAffine(
                 field.el(gx), field.el(gy), self
             ).to_projective()
+        else:
+            self.generator = None
 
-    def twist(self, generator=None) -> (Curve, Callable[[PointAffine], PointAffine]):
-        crv = self
-
-        def twist_xy(
-            x: Polynomial, y: Polynomial
-        ) -> (int | Polynomial, int | Polynomial):
-            return (crv.field.mono(2) * x, crv.field.mono(3) * y)
-
-        def untwist_xy(
-            xp: int | Polynomial, yp: int | Polynomial
-        ) -> (Polynomial, Polynomial):
-            return (xp / crv.field.mono(2), yp / crv.field.mono(3))
-
-        tcrv = Curve(
-            field=crv.field,
-            a=crv.a * crv.field.mono(4),
-            b=crv.b * crv.field.mono(6),
-            n=crv.n,
-            generator=generator,
-        )
-
-        def twist_point(p: PointAffine) -> PointAffine:
-            assert isinstance(p, PointAffine)
-            if p.is_zero():
-                return tcrv.zero()
-            return PointAffine(*twist_xy(p.x, p.y), tcrv)
-
-        def untwist_point(pp: PointAffine) -> PointAffine:
-            assert isinstance(pp, PointAffine)
-            if pp.is_zero():
-                return crv.zero()
-            return PointAffine(*untwist_xy(pp.x, pp.y), crv)
-
-        return (tcrv, twist_point, untwist_point)
+        if twisted is not None:
+            self.twisted = twisted
+        elif self.field.ext_degree() > 1:
+            self.twisted = Curve(
+                field=self.field,
+                a=self.a * self.field.mono(4),
+                b=self.b * self.field.mono(6),
+                n=self.n,
+                generator=twisted_generator,
+                twisted=self,
+            )
+            if twisted_generator is None and self.generator is not None:
+                self.twisted.generator = self.generator.twist()
+            if self.generator is None and self.twisted.generator is not None:
+                self.generator = self.twisted.generator.untwist()
 
     def zero(self):
         return PointAffine(0, 0, self).zero().to_projective()
@@ -762,6 +748,26 @@ class PointAffine:
         else:
             return q
 
+    def twist(self) -> PointAffine:
+        def twist_xy(
+            x: Polynomial, y: Polynomial
+        ) -> (int | Polynomial, int | Polynomial):
+            return (self.crv.field.mono(2) * x, self.crv.field.mono(3) * y)
+
+        if self.is_zero():
+            return self
+        return PointAffine(*twist_xy(self.x, self.y), self.crv.twisted)
+
+    def untwist(self) -> PointAffine:
+        def untwist_xy(
+            xp: int | Polynomial, yp: int | Polynomial
+        ) -> (Polynomial, Polynomial):
+            return (xp / self.crv.field.mono(2), yp / self.crv.field.mono(3))
+
+        if self.is_zero():
+            return self
+        return PointAffine(*untwist_xy(self.x, self.y), self.crv.twisted)
+
     def trace_map(self):
         q = self.crv.field.characteristic()
         k = self.crv.field.ext_degree()
@@ -785,6 +791,9 @@ class PointAffine:
             self.coordinate_to_big_endian(self.x),
             self.coordinate_to_big_endian(self.y),
         )
+
+    def to_bytes(self):
+        return self.x.to_bytes() + self.y.to_bytes()
 
     def to_sec1_uncompressed(self):
         x, y = self.to_big_endian_coordinates()
@@ -882,6 +891,12 @@ class PointProjective:
         p = PointAffine(self.x * zinv, self.y * zinv, self.crv)
         return p.zero() if self.is_zero() else p
 
+    def twist(self):
+        return self.to_affine().twist().to_projective()
+
+    def untwist(self):
+        return self.to_affine().untwist().to_projective()
+
     def is_zero(self):
         return self.z == 0
 
@@ -959,6 +974,9 @@ class PointProjective:
             k >>= 1
 
         return result
+
+    def to_bytes(self):
+        return self.x.to_bytes() + self.y.to_bytes()
 
     def to_sec1_uncompressed(self):
         return self.to_affine().to_sec1_uncompressed()
@@ -1198,16 +1216,16 @@ def verify_split_bbs_proof(
     return cv_int == c
 
 
-def line_function(Q1: PointAffine, Q2: PointAffine, P: PointAffine):
+def line_function(ft: ExtensionField, Q1: PointAffine, Q2: PointAffine, P: PointAffine):
     assert isinstance(Q1, PointAffine)
     assert isinstance(Q2, PointAffine)
     assert isinstance(P, PointAffine)
     assert Q1.crv is Q2.crv
     # assert Q1.crv.field.q == P.crv.field.q
 
-    (x1, y1) = (Q1.x, Q1.y)
-    (x2, y2) = (Q2.x, Q2.y)
-    (x, y) = (P.x, P.y)
+    (x1, y1) = (ft.promote(Q1.x), ft.promote(Q1.y))
+    (x2, y2) = (ft.promote(Q2.x), ft.promote(Q2.y))
+    (x, y) = (ft.promote(P.x), ft.promote(P.y))
     if Q1 == Q2:
         lf = (3 * x1**2) / (2 * y1)
     elif Q1 == -Q2:
@@ -1575,7 +1593,12 @@ def miller_weil_pairing(P: PointAffine, Q: PointAffine) -> Polynomial:
 
 
 def opt_ate_pairing(
-    P: PointProjective, Q: PointProjective, c: list[-1 | 0 | 1], t: int, k: int, untwist
+        ft: ExtensionField,
+        P: PointProjective,
+        Q: PointProjective,
+        c: list[-1 | 0 | 1],
+        t: int,
+        k: int,
 ) -> Polynomial:
     assert isinstance(P, PointProjective)
     assert isinstance(Q, PointProjective)
@@ -1593,23 +1616,37 @@ def opt_ate_pairing(
     if c[-1] == -1:
         T = -T
     for i in reversed(range(len(c))):
-        print(i)
-        f = f**2 * line_function(T.to_affine(), T.to_affine(), Paff)
+        print(i, f)
+        f = f**2 * line_function(ft, T.to_affine(), T.to_affine(), Paff)
         T = T + T
         if c[i] == 1:
-            f = f * line_function(T.to_affine(), Qaff, Paff)
+            f = f * line_function(ft, T.to_affine(), Qaff, Paff)
             T = T + Q
         elif c[i] == -1:
-            f = f * line_function(T.to_affine(), -Qaff, Paff)
+            f = f * line_function(ft, T.to_affine(), -Qaff, Paff)
             T = T - Q
     quot, rem = divmod(p**k - 1, r)
-    print(p, r, p**k - 1, quot, rem)
+    print("p", p)
+    print("r", r)
+    print("p**k - 1", p**k - 1)
+    print("quot", quot)
+    print("rem", rem)
+    print("rem", rem)
     assert rem == 0
     f = f**quot
     return f
 
 
 t = -(2**63) - 2**62 - 2**60 - 2**57 - 2**48 - 2**16
+c = [0]*64
+c[16] = -1
+c[48] = -1
+c[57] = -1
+c[60] = -1
+c[62] = -1
+c[63] = -1
+assert sum(ci * (2**i) for i, ci in enumerate(c)) == t
+k = 12
 p = (t - 1) ** 2 * (t**4 - t**2 + 1) // 3 + t
 r = t**4 - t**2 + 1
 h_g1 = 0x396c8c005555e1568c00aaab0000aaab
@@ -1630,7 +1667,20 @@ CRV_BLS = Curve(
     a=gfp12.zero(),
     b=4 * gfp12.one(),
     n=r,
-    generator=None,
+    generator=(
+        0x17F1D3A73197D7942695638C4FA9AC0FC3688C4F9774B905A14E3A3F171BAC586C55E83FF97A1AEFFB3AF00ADB22C6BB,
+        0x08B3F481E3AAA0F1A09E30ED741D8AE4FCF5E095D5D00AF600DB18CB2C04B3EDD03CC744A2888AE40CAA232946C5E7E1,
+    ),
+    twisted_generator=(
+        [
+            0x024AA2B2F08F0A91260805272DC51051C6E47AD4FA403B02B4510B647AE3D1770BAC0326A805BBEFD48056C8C121BDB8,
+            0x13E02B6052719F607DACD3A088274F65596BD0D09920B61AB5DA61BBDC7F5049334CF11213945D57E5AC7D055D042B7E,
+        ],
+        [
+            0x0CE5D527727D6E118CC9CDC6DA2E351AADFD9BAA8CBDD3A76D429A695160D12C923AC9CC3BACA289E193548608B82801,
+            0x0606C4A02EA734CC32ACD2B02BC28B99CB3E287E85A763AF267492AB572E99AB3F370D275CEC1DA1AAA9075FF05F79BE,
+        ],
+    ),
 )
 CRV_BLS_G1 = Curve(
     field=gfp,
