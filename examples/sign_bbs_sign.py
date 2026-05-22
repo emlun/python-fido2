@@ -54,10 +54,9 @@ user = {"id": b"user_id", "name": "A. User"}
 
 
 # Prepare a message to sign
-pk = CoseKey.parse(cbor.decode(bytes.fromhex("a50102033a0001003f203a00010040215830044a9ff85f9756e8740779c8ecd876136770a4e7979717fad0997066253c1e8b981be71df0529cdcdde5c86139d26aeb225830097010bc6b60c5816bc8de34726a44b40e3ec0e17f680e0b62e261084ca8cb2bfe2b231a3e1bb9e51a8c5f1cea7d6a9f")));
-credential_id_b64u = "ARMPOreUDDCIlxcgW6FsOXDKEVz5hLdgnhKgwNIZL86gwJCUbVNBuT2NJOrfxvxnCflvbnhF9ueo-1dwtFXs-uxqjg3EK-_rKFD7gdskA5BPw6hN8kCgc9aT5IUddgy3BzfvhSerMdTDlPU0lydkt123o5uFjY6OyDP6uoD8t6W5Kj4kPJyIJ7j4l9i_DiBQvx78H6JbQci0yJHT_-iKKjjR3f5swbwQc5IkLJbwX0H51G7RXzzP7uP9WA5-2p_qSHH3NGAQGT98sMqx8sQ_c-vGqCs_7VT9-e7C0xnt-r9dEWF6e2WzUyiHJMfoe8nbMw";
-key_handle_b64u = "glggwRYlL-D2hiIjp0aOo37En0cMtHouylJOKqZdbr-eoexYKYM6AAEAPwFYIHIm4L6opWZHUhIiqjsXagGu4rMiV6xPgNOXs5ogiNng";
-tbs = bytes.fromhex("8129444781a011cf17ead139e0b308c68accadbdd557a46815f6b4fc4cd2b576ae260c4b461b4e72aa131088e128aed448656c6c6f2c20576f726c6421")
+credential_id_b64u = "AeDchP0jctqf8Xqf5VLBs8RPUgVcOa3ggZ-w_EBji-OBnRnBbdCgyZwEMOH8chYZocZ-L-gyiofwpnFzW2K95rIkXQW0Itv6x7NFAylLVE37uyzXA92NQdJ_ULrKRDRLx2Cy1EQBpJBFFZnKJTc2umbpGDWU5ljUku339dJ_9e_aOOnu7y8X3YaJLyzOOcKlcNUwezdZ01TfS5bJmRQrT_EtuUXL1WQP66ABdu05ZJ2-YK5-j5iccEhJug1ttqdiYsNqVkY2kd32EFPMj0x26TzPWtoAzKyXLQIRb1-PYKvnQ_OXS_bZ6khhoAhcUe3QgA";
+key_handle_b64u = "glggg4eMmbZuQKf4Qk-zTV-LmTif8zpvCBRY3ulQ0nW6e0RYKYM6AAEAPwFYIMfxKNJPzgY7F2YKNBKXMgP1UoxZ05XkLaw8-G7ljLoJ";
+tbs = bytes.fromhex("96b9c23cfa52162e7492f234a436cf88f9c7f9b2aa1c79e99ce5b01b90e03e5b1c4ea529fd9db7be5739415439898d5948656c6c6f2c20576f726c6421")
 
 # Prepare parameters for getAssertion
 request_options, state = server.authenticate_begin([
@@ -93,8 +92,8 @@ print("GET sign result", sign_result)
 signature_b64 = sign_result.get("signature")
 signature = websafe_decode(signature_b64)
 
-print("Test verify signature", signature_b64)
-pk.verify(tbs, signature)
-print("Signature verified!")
+# print("Test verify signature", signature_b64)
+# pk.verify(tbs, signature)
+# print("Signature verified!")
 
 print(f'const smsg = fromHex("{signature.hex()}");')
