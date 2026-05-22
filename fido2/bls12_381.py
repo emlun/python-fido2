@@ -71,6 +71,9 @@ class Curve:
     def sqrt(self, a):
         return modsqrt(a, self.p)
 
+    def sign_gf_p(self, y: int) -> bool:
+        return y > (self.p - 1) // 2
+
     def find_y(self, x):
         y = self.sqrt(self.pow(x, 3) + self.a * x + self.b)
         if y is not None:
@@ -97,19 +100,36 @@ class Curve:
         return int.to_bytes(x, self.scalar_len, "big")
 
     def point_from_cose(self, cose):
-        assert cose[1] == 2  # kty: EC2
-        assert cose[-1] == -65601  # crv: BLS12-381 (placeholder value)
-        assert len(cose[-2]) == self.coord_len
-        assert len(cose[-3]) == self.coord_len
-        x = int.from_bytes(cose[-2], "big")
-        y = int.from_bytes(cose[-3], "big")
-        return PointAffine(x, y, self).to_projective()
+        assert cose[1] == 1  # kty: OKP
+        assert cose[-1] in [13, -65601]  # crv: BLS12-381 (requested value, placeholder value)
+        return self.point_from_bytes_compact(cose[-2])
 
     def point_from_sec1_uncompressed(self, sec1: bytes):
         assert sec1[0] == 0x04
         x = int.from_bytes(sec1[1 : (1 + self.coord_len)], "big")
         y = int.from_bytes(sec1[(1 + self.coord_len) : (1 + self.coord_len * 2)], "big")
         return PointAffine(x, y, self).to_projective()
+
+    def point_from_bytes_compact(self, s_string: bytes):
+        """https://www.ietf.org/archive/id/draft-irtf-cfrg-bbs-signatures-10.html#name-point-de-serialization"""
+        m_byte = s_string[0]
+        assert m_byte not in [0x20, 0x60, 0xE0], "Invalid m_byte"
+        c_bit = m_byte & 0x80
+        assert c_bit != 0, "Uncompressed encoding not allowed"
+        assert len(s_string) == 48
+        i_bit = m_byte & 0x40
+        s_bit = m_byte & 0x20
+        print("s_string: " + s_string.hex())
+        s_string = bytes([s_string[0] & 0x1F]) + s_string[1:]
+        if i_bit != 0:
+            assert all(b == 0 for b in s_string), "Infinity point must have zero coordinate"
+            return self.zero()
+        else:
+            x = int.from_bytes(s_string, 'big')
+            y2 = (self.pow(x, 3) + 4) % self.p
+            y = self.sqrt(y2)
+            y_bit = self.sign_gf_p(y)
+            return PointAffine(x, y if y_bit == (s_bit != 0) else self.p - y, self).to_projective()
 
     def parse_scalar_from(self, b: bytes) -> (int, bytes):
         return int.from_bytes(b[: self.scalar_len], "big"), b[self.scalar_len :]
@@ -176,6 +196,16 @@ class PointAffine:
     def to_sec1_uncompressed(self):
         x, y = self.to_big_endian_coordinates()
         return bytes([0x04]) + x + y
+
+    def to_bytes_compact(self):
+        """https://www.ietf.org/archive/id/draft-irtf-cfrg-bbs-signatures-10.html#name-point-serialization"""
+        c_bit = 0x80
+        i_bit = 0x40 if self.is_zero else 0x00
+        s_bit = 0x00 if i_bit != 0x00 else 0x20 if self.crv.sign_gf_p(self.y) else 0x00
+        m_byte = c_bit | i_bit | s_bit
+        s_string = bytes([0x00]) * self.crv.coord_len if self.is_zero else self.coordinate_to_big_endian(self.x)
+        s_string = bytes([s_string[0] | m_byte]) + s_string[1:]
+        return s_string
 
     def is_valid_nonzero(self):
         return (
@@ -377,12 +407,15 @@ class PointProjective:
     def to_sec1_uncompressed(self):
         return self.to_affine().to_sec1_uncompressed()
 
+    def to_bytes_compact(self):
+        return self.to_affine().to_bytes_compact()
+
     def verify_ecsdsa_sha256(self, signature: bytes, message: bytes):
         assert len(signature) == self.crv.scalar_len * 2
         s = int.from_bytes(signature[: self.crv.scalar_len], "big")
         e = int.from_bytes(signature[self.crv.scalar_len :], "big")
         rv = self.crv.generator * s + self * e
-        rv_bin = rv.to_affine().to_sec1_uncompressed()
+        rv_bin = rv.to_bytes_compact()
         ev_bin = sha256(rv_bin + message)
         ev = int.from_bytes(ev_bin, "big") % self.crv.n
         if ev == e:
@@ -443,7 +476,7 @@ class Schnorr:
         return sk, pk
 
     def encode_point(self, p: PointProjective) -> bytes:
-        return p.to_sec1_uncompressed()
+        return p.to_bytes_compact()
 
     def encode_signature(self, sig: (int, int)) -> bytes:
         c, s = sig
