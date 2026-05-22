@@ -90,11 +90,9 @@ if not sign_key:
 pk_bin = websafe_decode(sign_key["publicKey"])
 
 # Extension output contains master public key
-pk = CoseKey.parse(
-    cbor.decode(pk_bin)
-)  # COSE key in bytes
+pk = cbor.decode(pk_bin)
 print("public key", pk)
-print(f'const dpk_rfc8235 = G1.Point.fromAffine({{ x: BigInt("0x{pk[-2].hex()}"), y: BigInt("0x{pk[-3].hex()}") }});')
-print(f'pk = CoseKey.parse(cbor.decode(bytes.fromhex("{pk_bin.hex()}")));')
+print(f'const dpk_rfc8235 = G1.Point.fromHex("{pk[-2].hex()}");')
+print(f'pk = cbor.decode(bytes.fromhex("{pk_bin.hex()}"));')
 print(f'credential_id_b64u = "{websafe_encode(credential.credential_id)}";')
 print(f'key_handle_b64u = "{sign_key["keyHandle"]}";')
