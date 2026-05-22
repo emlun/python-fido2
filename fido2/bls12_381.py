@@ -30,11 +30,14 @@ def modinv(n, primeModulus):
 
 def modsqrt(n, primeModulus):
     assert (primeModulus % 4) == 3
-    s = modpow(n, (primeModulus + 1) // 4, primeModulus)
-    if s != 0 and s != 1 and modpow(s, 2, primeModulus) == n:
-        return s
+    if n in [0, 1]:
+        return n
     else:
-        return None
+        s = modpow(n, (primeModulus + 1) // 4, primeModulus)
+        if modpow(s, 2, primeModulus) == n:
+            return s
+        else:
+            return None
 
 
 def matrix_mul[T](mat: list[list[T]], vec: list[T]) -> list[T]:
