@@ -495,7 +495,7 @@ class Schnorr:
     def verify_htf_encoded(self, pk: PointProjective, sig: bytes, m: bytes) -> bool:
         return self.verify_htf(pk, self.parse_signature(sig), m)
 
-    def verify_sha256(self, pk: PointProjective, sig: bytes, m: bytes) -> bool:
+    def verify_sha256(self, pk: PointProjective, sig: (int, int), m: bytes) -> bool:
         """
         Verify using SHA-256 as the hash function H, rejecting is the hash is greater than the group order.
         """
@@ -609,7 +609,7 @@ class BbsSchnorr:
         self,
         isk: int,
         dpk: PointProjective,
-        attrs: list[PointProjective],
+        attrs: list[int],
         ikm: Optional[bytes] = None,
     ) -> (PointProjective, int):
         """Issue procedure of BBS-Schnorr proposed in https://eprint.iacr.org/2025/1995"""
