@@ -704,7 +704,7 @@ def test_assert_uv_required(ctap2, on_keepalive, credential_cache, sign):
     assert exc_info.value.code == CtapError.ERR.PUAT_REQUIRED
 
 
-def test_assert_bbs_schnorr(credential_cache, sign):
+def test_assert_bbs_schnorr_dpk_g1(credential_cache, sign):
     bbs = BbsSchnorr(BBS_SCHNORR_SUITE)
 
     algorithms = [-65600]

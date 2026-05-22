@@ -66,7 +66,7 @@ result = client.make_credential(
         **create_options["publicKey"],
         "extensions": {
             PreviewSignExtension.NAME: {
-                "generateKey": {"algorithms": [EcsdsaBls12_381_Sha256.ALGORITHM]}
+                "generateKey": {"algorithms": [-65605]}
             }
         },
     }
