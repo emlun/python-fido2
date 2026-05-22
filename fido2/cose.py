@@ -34,7 +34,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, ed448, ed25519, padding, rsa
 
 from . import arkg, bls12_381
-from .utils import bytes2int, int2bytes
+from .utils import bytes2int, int2bytes, sha256
 
 if TYPE_CHECKING:
     # This type isn't available on cryptography <40.
@@ -358,7 +358,7 @@ class EcsdsaBls12_381_Sha256_Prehash(EcsdsaBls12_381_Sha256):
             raise ValueError("Unsupported elliptic curve")
 
         pk = bls12_381.CRV_BLS.point_from_cose(self)
-        pk.verify_ecsdsa_sha256(signature, message)
+        pk.verify_ecsdsa_sha256(signature, sha256(message))
 
 
 class RS1(CoseKey):

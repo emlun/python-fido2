@@ -367,7 +367,7 @@ def test_ecsdsa_bls12_381_sha256_prehash(credential_cache, sign):
     response, signature = sign(cred, tbs)
 
     assert signature is not None
-    cred.public_key.verify(sha256(tbs), signature)
+    cred.public_key.verify(tbs, signature)
 
 
 def test_ecsdsa_bls12_381_sha256_prehash_split(credential_cache, sign):
@@ -382,7 +382,7 @@ def test_ecsdsa_bls12_381_sha256_prehash_split(credential_cache, sign):
     response, signature = sign(cred, tbs)
 
     assert signature is not None
-    cred.public_key.verify(sha256(tbs), signature)
+    cred.public_key.verify(tbs, signature)
 
 
 def test_two_keys_same_alg(credential_cache, sign):
