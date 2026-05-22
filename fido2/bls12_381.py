@@ -119,7 +119,6 @@ class Curve:
         assert len(s_string) == 48
         i_bit = m_byte & 0x40
         s_bit = m_byte & 0x20
-        print("s_string: " + s_string.hex())
         s_string = bytes([s_string[0] & 0x1F]) + s_string[1:]
         if i_bit != 0:
             assert all(b == 0 for b in s_string), "Infinity point must have zero coordinate"
