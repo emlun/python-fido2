@@ -100,9 +100,9 @@ class Curve:
         return int.to_bytes(x, self.scalar_len, "big")
 
     def point_from_cose(self, cose):
-        assert cose[1] == 1  # kty: OKP
+        assert cose[1] in [1, 2]  # kty: OKP or EC2
         assert cose[-1] in [13, -65601]  # crv: BLS12-381 (requested value, placeholder value)
-        return self.point_from_bytes_compact(cose[-2])
+        return self.point_from_bytes_compact(cose[-2]) if cose[1] == 1 else self.point_from_sec1_uncompressed(bytes([0x04]) + cose[-2] + cose[-3])
 
     def point_from_sec1_uncompressed(self, sec1: bytes):
         assert sec1[0] == 0x04
@@ -409,12 +409,12 @@ class PointProjective:
     def to_bytes_compact(self):
         return self.to_affine().to_bytes_compact()
 
-    def verify_ecsdsa_sha256(self, signature: bytes, message: bytes):
+    def verify_ecsdsa_sha256(self, signature: bytes, message: bytes, compact=True):
         assert len(signature) == self.crv.scalar_len * 2
         s = int.from_bytes(signature[: self.crv.scalar_len], "big")
         e = int.from_bytes(signature[self.crv.scalar_len :], "big")
         rv = self.crv.generator * s + self * e
-        rv_bin = rv.to_bytes_compact()
+        rv_bin = rv.to_bytes_compact() if compact else rv.to_sec1_uncompressed()
         ev_bin = sha256(rv_bin + message)
         ev = int.from_bytes(ev_bin, "big") % self.crv.n
         if ev == e:

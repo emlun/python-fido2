@@ -36,7 +36,7 @@ import sys
 from exampleutils import get_client
 
 from fido2 import cbor
-from fido2.cose import EcsdsaBls12_381_Sha256, CoseKey
+from fido2.cose import CoseKey, EcsdsaBls12_381_Sha256, EcsdsaBls12_381_BP1_Sha256_SEC1
 from fido2.ctap2.extensions import PreviewSignExtension
 from fido2.server import Fido2Server
 from fido2.utils import sha256, websafe_decode, websafe_encode
@@ -66,7 +66,7 @@ result = client.make_credential(
         **create_options["publicKey"],
         "extensions": {
             PreviewSignExtension.NAME: {
-                "generateKey": {"algorithms": [-65605]}
+                "generateKey": {"algorithms": [EcsdsaBls12_381_BP1_Sha256_SEC1.ALGORITHM]}
             }
         },
     }
@@ -96,3 +96,53 @@ print(f'const dpk_rfc8235 = G1.Point.fromHex("{pk[-2].hex()}");')
 print(f'pk = cbor.decode(bytes.fromhex("{pk_bin.hex()}"));')
 print(f'credential_id_b64u = "{websafe_encode(credential.credential_id)}";')
 print(f'key_handle_b64u = "{sign_key["keyHandle"]}";')
+
+
+
+
+
+
+# Prepare a message to sign
+tbs = bytes.fromhex("8129444781a011cf17ead139e0b308c68accadbdd557a46815f6b4fc4cd2b576ae260c4b461b4e72aa131088e128aed448656c6c6f2c20576f726c6421")
+
+
+# Prepare parameters for getAssertion
+request_options, state = server.authenticate_begin([
+    { "id": credential.credential_id, "type": 'public-key' }
+], user_verification=uv)
+
+
+# Authenticate the credential
+result = client.get_assertion(
+    {
+        **request_options["publicKey"],
+        # Add extension outputs. We have only 1 credential in allowCredentials
+        "extensions": {
+            PreviewSignExtension.NAME: {
+                "signByCredential": {
+                    websafe_encode(credential.credential_id): {
+                        "keyHandle": sign_key["keyHandle"],
+                        "tbs": tbs,
+                    },
+                },
+            }
+        },
+    }
+)
+
+# Only one cred in allowCredentials, only one response.
+result = result.get_response(0)
+
+sign_result = result.client_extension_results[PreviewSignExtension.NAME]
+print("GET sign result", sign_result)
+
+# Response contains a signature over tbs
+signature_b64 = sign_result.get("signature")
+signature = websafe_decode(signature_b64)
+
+print("Test verify signature", signature_b64)
+pk_cose = CoseKey.parse(pk)
+pk_cose.verify(tbs, signature)
+print("Signature verified!")
+
+print(f'const smsg = fromHex("{signature.hex()}");')
