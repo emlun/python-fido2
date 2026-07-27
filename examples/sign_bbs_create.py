@@ -33,13 +33,15 @@ derive two separate secrets.
 
 import sys
 
-from exampleutils import get_client
+from exampleutils import get_client, set_log_level
 
 from fido2 import cbor
 from fido2.cose import CoseKey, EcsdsaBls12_381_Sha256, EcsdsaBls12_381_BP1_Sha256_SEC1
 from fido2.ctap2.extensions import PreviewSignExtension
 from fido2.server import Fido2Server
-from fido2.utils import sha256, websafe_decode, websafe_encode
+from fido2.utils import sha256, websafe_decode, websafe_encode, LOG_LEVEL_TRAFFIC
+
+set_log_level(fido2=LOG_LEVEL_TRAFFIC)
 
 uv = "discouraged"
 
