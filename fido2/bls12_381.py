@@ -6,10 +6,6 @@ from functools import reduce
 from itertools import zip_longest
 from typing import Callable, Optional, Tuple
 
-from cryptography.exceptions import InvalidSignature
-
-from .utils import sha256
-
 
 def modpow(base, exp, modulus):
     result = 1
@@ -951,18 +947,6 @@ class PointProjective:
 
     def to_sec1_uncompressed(self):
         return self.to_affine().to_sec1_uncompressed()
-
-    def verify_ecsdsa_sha256(self, signature: bytes, message: bytes):
-        assert len(signature) == self.crv.scalar_len * 2
-        s = int.from_bytes(signature[: self.crv.scalar_len], "big")
-        e = int.from_bytes(signature[self.crv.scalar_len :], "big")
-        rv = self.crv.generator * s + self * e
-        rv_bin = rv.to_affine().to_sec1_uncompressed()
-        ev_bin = sha256(rv_bin + message)
-        ev = int.from_bytes(ev_bin, "big") % self.crv.n
-        if ev == e:
-            return
-        raise InvalidSignature()
 
 
 def line_function(ft: ExtensionField, Q1: PointAffine, Q2: PointAffine, P: PointAffine):
