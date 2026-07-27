@@ -30,6 +30,7 @@ Utilities for common functionality used by several examples in this directory.
 """
 
 import ctypes
+import logging.config
 from getpass import getpass
 
 from fido2.client import DefaultClientDataCollector, Fido2Client, UserInteraction
@@ -110,3 +111,39 @@ def get_client(predicate=None, **kwargs):
             return client, client.info
     else:
         raise ValueError("No suitable Authenticator found!")
+
+
+def set_log_level(fido2='DEBUG', root='INFO'):
+    logging.config.dictConfig({
+        'version': 1,
+        'disable_existing_loggers': False,
+
+        'formatters': {
+            'default': {
+                'format': '%(asctime)s.%(msecs)03d %(levelname)-8s %(name)-15s %(message)s',
+                'datefmt': '%Y-%m-%d %H:%M:%S',
+            },
+        },
+
+        'handlers': {
+            'console': {
+                'class': 'logging.StreamHandler',
+                'stream': 'ext://sys.stdout',
+                'formatter': 'default',
+            }
+        },
+
+        'root': {
+            'level': root,
+            'handlers': ['console'],
+        },
+
+        'loggers': {
+            'fido2': {
+                'level': fido2,
+                'handlers': ['console'],
+                'qualname': 'fido2',
+                'propagate': False,
+            }
+        },
+    })
