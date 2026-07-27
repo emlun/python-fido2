@@ -194,7 +194,7 @@ class ExtensionField:
         assert isinstance(p, Polynomial), (p, self)
         pad_len = self.modulus.degree() - len(p.coeffs)
         padded = [*p.coeffs, *([self.base.zero()] * pad_len)]
-        return b"".join(self.base.to_bytes(c) for c in padded)
+        return b"".join(self.base.to_bytes(c) for c in reversed(padded))
 
     def ext_degree(self):
         return self.modulus.degree() * self.base.ext_degree()
