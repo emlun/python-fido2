@@ -1581,7 +1581,8 @@ def opt_ate_pairing(
     r = P.crv.n
 
     Paff = P.to_affine()
-    Qaff = Q.to_affine()
+    Qaff = Q.to_affine().untwist()
+    Qaffneg = -Qaff
 
     f = 1
     T = Q
@@ -1589,20 +1590,20 @@ def opt_ate_pairing(
         T = -T
     for i in reversed(range(len(c))):
         print(i, f)
-        f = f**2 * line_function(ft, T.to_affine(), T.to_affine(), Paff)
+        Tunt = T.to_affine().untwist()
+        f = f**2 * line_function(ft, Tunt, Tunt, Paff)
         T = T + T
         if c[i] == 1:
-            f = f * line_function(ft, T.to_affine(), Qaff, Paff)
+            f = f * line_function(ft, T.to_affine().untwist(), Qaff, Paff)
             T = T + Q
         elif c[i] == -1:
-            f = f * line_function(ft, T.to_affine(), -Qaff, Paff)
+            f = f * line_function(ft, T.to_affine().untwist(), Qaffneg, Paff)
             T = T - Q
     quot, rem = divmod(p**k - 1, r)
     print("p", p)
     print("r", r)
     print("p**k - 1", p**k - 1)
     print("quot", quot)
-    print("rem", rem)
     print("rem", rem)
     assert rem == 0
     f = f**quot
