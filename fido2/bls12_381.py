@@ -615,7 +615,7 @@ class Rational:
 
 
 class Curve:
-    def __init__(self, field, a, b, n, generator, twisted=None, twisted_generator=None):
+    def __init__(self, field, a, b, n, generator, untwist_field=None, psi_inv=None):
         self.field = field
         self.a = a
         self.b = b
@@ -631,21 +631,11 @@ class Curve:
         else:
             self.generator = None
 
-        if twisted is not None:
-            self.twisted = twisted
-        elif self.field.ext_degree() > 1:
-            self.twisted = Curve(
-                field=self.field,
-                a=self.a * self.field.mono(4),
-                b=self.b * self.field.mono(6),
-                n=self.n,
-                generator=twisted_generator,
-                twisted=self,
-            )
-            if twisted_generator is None and self.generator is not None:
-                self.twisted.generator = self.generator.twist()
-            if self.generator is None and self.twisted.generator is not None:
-                self.generator = self.twisted.generator.untwist()
+        if not (untwist_field, psi_inv) == (None, None):
+            assert untwist_field is not None
+            assert psi_inv is not None
+            self.untwist_field = untwist_field
+            self.psi_inv = psi_inv
 
     def zero(self):
         return PointAffine(0, 0, self).zero().to_projective()
@@ -748,25 +738,10 @@ class PointAffine:
         else:
             return q
 
-    def twist(self) -> PointAffine:
-        def twist_xy(
-            x: Polynomial, y: Polynomial
-        ) -> (int | Polynomial, int | Polynomial):
-            return (self.crv.field.mono(2) * x, self.crv.field.mono(3) * y)
-
-        if self.is_zero():
-            return self
-        return PointAffine(*twist_xy(self.x, self.y), self.crv.twisted)
-
     def untwist(self) -> PointAffine:
-        def untwist_xy(
-            xp: int | Polynomial, yp: int | Polynomial
-        ) -> (Polynomial, Polynomial):
-            return (xp / self.crv.field.mono(2), yp / self.crv.field.mono(3))
-
         if self.is_zero():
-            return self
-        return PointAffine(*untwist_xy(self.x, self.y), self.crv.twisted)
+            raise Exception("Cannot untwist zero point")
+        return PointAffine(*self.crv.psi_inv(self.x, self.y), None)
 
     def trace_map(self):
         q = self.crv.field.characteristic()
@@ -890,9 +865,6 @@ class PointProjective:
         zinv = self.crv.field.invert(self.z)
         p = PointAffine(self.x * zinv, self.y * zinv, self.crv)
         return p.zero() if self.is_zero() else p
-
-    def twist(self):
-        return self.to_affine().twist().to_projective()
 
     def untwist(self):
         return self.to_affine().untwist().to_projective()
@@ -1671,16 +1643,6 @@ CRV_BLS = Curve(
         0x17F1D3A73197D7942695638C4FA9AC0FC3688C4F9774B905A14E3A3F171BAC586C55E83FF97A1AEFFB3AF00ADB22C6BB,
         0x08B3F481E3AAA0F1A09E30ED741D8AE4FCF5E095D5D00AF600DB18CB2C04B3EDD03CC744A2888AE40CAA232946C5E7E1,
     ),
-    twisted_generator=(
-        [
-            0x024AA2B2F08F0A91260805272DC51051C6E47AD4FA403B02B4510B647AE3D1770BAC0326A805BBEFD48056C8C121BDB8,
-            0x13E02B6052719F607DACD3A088274F65596BD0D09920B61AB5DA61BBDC7F5049334CF11213945D57E5AC7D055D042B7E,
-        ],
-        [
-            0x0CE5D527727D6E118CC9CDC6DA2E351AADFD9BAA8CBDD3A76D429A695160D12C923AC9CC3BACA289E193548608B82801,
-            0x0606C4A02EA734CC32ACD2B02BC28B99CB3E287E85A763AF267492AB572E99AB3F370D275CEC1DA1AAA9075FF05F79BE,
-        ],
-    ),
 )
 CRV_BLS_G1 = Curve(
     field=gfp,
@@ -1707,4 +1669,6 @@ CRV_BLS_G2 = Curve(
             0x0606C4A02EA734CC32ACD2B02BC28B99CB3E287E85A763AF267492AB572E99AB3F370D275CEC1DA1AAA9075FF05F79BE,
         ],
     ),
+    untwist_field=gfp12,
+    psi_inv=lambda x, y: (gfp12.promote(x) / gfp12.mono(2), gfp12.promote(y) / gfp12.mono(3)),
 )
