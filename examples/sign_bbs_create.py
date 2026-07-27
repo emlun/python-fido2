@@ -114,6 +114,7 @@ request_options, state = server.authenticate_begin([
 ], user_verification=uv)
 
 
+print("OPTIONS:", request_options)
 # Authenticate the credential
 result = client.get_assertion(
     {

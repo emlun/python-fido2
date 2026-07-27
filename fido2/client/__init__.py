@@ -647,6 +647,7 @@ class _Ctap2ClientBackend(_ClientBackend):
         additional_perms = permissions & ~(
             ClientPin.PERMISSION.MAKE_CREDENTIAL | ClientPin.PERMISSION.GET_ASSERTION
         )
+        logger.debug("_should_use_uv user_verification=%s, permissions=%s, uv_supported=%s, uv_configured=%s", user_verification, permissions, uv_supported, uv_configured)
 
         if (
             user_verification == UserVerificationRequirement.REQUIRED
@@ -656,6 +657,15 @@ class _Ctap2ClientBackend(_ClientBackend):
             )
             or info.options.get("alwaysUv")
         ):
+            logger.debug("_should_use_uv %s", user_verification == UserVerificationRequirement.REQUIRED)
+            logger.debug("_should_use_uv %s", (
+                user_verification in (UserVerificationRequirement.PREFERRED, None)
+                and uv_supported
+            ))
+            logger.debug("_should_use_uv %s", user_verification in (UserVerificationRequirement.PREFERRED, None))
+            logger.debug("_should_use_uv %s", uv_supported)
+            logger.debug("_should_use_uv %s", info.options.get("alwaysUv")
+)
             if not uv_configured:
                 raise ClientError.ERR.CONFIGURATION_UNSUPPORTED(
                     "User verification not configured/supported"
