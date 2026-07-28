@@ -96,6 +96,9 @@ class PrimeField:
     def size(self):
         return self.q
 
+    def serialized_len(self):
+        return self.coord_len
+
     def to_bytes(self, c: int) -> bytes:
         assert isinstance(c, int), c
         return int.to_bytes(c, self.coord_len, "big")
@@ -114,6 +117,9 @@ class PrimeField:
     def zero(self) -> int:
         return 0
 
+    def is_zero(self, a):
+        return a == 0
+
     def one(self) -> int:
         return 1
 
@@ -126,6 +132,9 @@ class PrimeField:
         # else:
         assert isinstance(a, int), a
         return modinv(a, self.q)
+
+    def sign_gf_p_m(self, a):
+        return 1 if a > (self.q - 1) // 2 else 0
 
     def __repr__(self):
         return f"Field(q={self.q})"
@@ -194,6 +203,9 @@ class ExtensionField:
     def ext_degree(self):
         return self.modulus.degree() * self.base.ext_degree()
 
+    def serialized_len(self):
+        return self.base.serialized_len() * self.modulus.degree()
+
     def el(self, coeffs: int | Polynomial | list[int] | list[Polynomial]) -> Polynomial:
         """Wrap `coeffs` as a little-endian polynomial over the field."""
         if isinstance(coeffs, Polynomial):
@@ -221,6 +233,9 @@ class ExtensionField:
     def zero(self) -> int:
         return self.el([self.base.zero()])
 
+    def is_zero(self, a):
+        return all(a.cfield.is_zero(c) for c in a.coeffs)
+
     def one(self) -> int:
         return self.el([self.base.one()])
 
@@ -238,6 +253,12 @@ class ExtensionField:
         assert isinstance(a, Polynomial), (a, self)
         assert a.pfield is self, (a, self)
         return a.inv()
+
+    def sign_gf_p_m(self, a):
+        for c in reversed(a.coeffs):
+            if not a.cfield.is_zero(c):
+                return a.cfield.sign_gf_p_m(c)
+        return 0
 
     def __repr__(self):
         return f"ExtField(mod={self.modulus}, base={self.base})"
@@ -762,8 +783,16 @@ class PointAffine:
             self.coordinate_to_big_endian(self.y),
         )
 
-    def to_bytes(self):
-        return self.x.to_bytes() + self.y.to_bytes()
+    def to_bytes_compact(self):
+        c_bit = 1
+        i_bit = 1 if self.is_zero() else 0
+        s_bit = 0 if i_bit != 0 or c_bit == 0 else self.crv.field.sign_gf_p_m(self.y)
+        m_byte = (c_bit << 7) | (i_bit << 6) | (s_bit << 5)
+        if i_bit == 0:
+            x_string = self.crv.field.to_bytes(self.x)
+            return bytes([m_byte | x_string[0]]) + x_string[1:]
+        else:
+            return bytes([m_byte]) + (bytes([0]) * (self.crv.field.serialized_len() - 1))
 
     def to_sec1_uncompressed(self):
         x, y = self.to_big_endian_coordinates()
@@ -942,8 +971,8 @@ class PointProjective:
 
         return result
 
-    def to_bytes(self):
-        return self.x.to_bytes() + self.y.to_bytes()
+    def to_bytes_compact(self):
+        return self.to_affine().to_bytes_compact()
 
     def to_sec1_uncompressed(self):
         return self.to_affine().to_sec1_uncompressed()
