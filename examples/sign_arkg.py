@@ -37,7 +37,7 @@ from exampleutils import get_client
 
 from fido2 import cbor
 from fido2.cose import ESP256_SPLIT_ARKG_PLACEHOLDER, CoseKey
-from fido2.ctap2.extensions import PreviewSignExtension
+from fido2.ctap2.extensions import PreviewSign5Extension, PreviewSignExtension
 from fido2.server import Fido2Server
 from fido2.utils import sha256, websafe_decode, websafe_encode
 
@@ -45,8 +45,11 @@ uv = "discouraged"
 
 # Locate a suitable FIDO authenticator
 client, info = get_client(
-    lambda info: PreviewSignExtension.NAME in info.extensions,
-    extensions=[PreviewSignExtension()],
+    lambda info: (
+        PreviewSignExtension.NAME in info.extensions
+        or PreviewSign5Extension.NAME in info.extensions
+    ),
+    extensions=[PreviewSignExtension(), PreviewSign5Extension()],
 )
 
 server = Fido2Server({"id": "example.com", "name": "Example RP"}, attestation="none")
@@ -61,13 +64,18 @@ create_options, state = server.register_begin(
 )
 
 # Create a credential
+generate_key = {"algorithms": [ESP256_SPLIT_ARKG_PLACEHOLDER]}
 result = client.make_credential(
     {
         **create_options["publicKey"],
         "extensions": {
             PreviewSignExtension.NAME: {
-                "generateKey": {"algorithms": [ESP256_SPLIT_ARKG_PLACEHOLDER]}
-            }
+                "generateKey": generate_key,
+            },
+            PreviewSign5Extension.NAME: {
+                "generateKey": generate_key,
+                "support": True,
+            },
         },
     }
 )
@@ -78,7 +86,10 @@ credentials = [auth_data.credential_data]
 print("New credential created, with the sign extension.")
 
 # PRF result:
-sign_result = result.client_extension_results.previewSign
+sign_result = (
+    result.client_extension_results.previewSign5
+    or result.client_extension_results.previewSign
+)
 print("CREATE sign result", sign_result)
 sign_key = sign_result.generated_key
 if not sign_key:
@@ -115,6 +126,13 @@ ph_data = sha256(message)
 request_options, state = server.authenticate_begin(credentials, user_verification=uv)
 
 
+sign_by_credential = {
+    websafe_encode(credentials[0].credential_id): {
+        "keyHandle": sign_key.key_handle,
+        "tbs": ph_data,
+        "additionalArgs": cbor.encode(args),
+    },
+}
 # Authenticate the credential
 result = client.get_assertion(
     {
@@ -122,14 +140,12 @@ result = client.get_assertion(
         # Add extension outputs. We have only 1 credential in allowCredentials
         "extensions": {
             PreviewSignExtension.NAME: {
-                "signByCredential": {
-                    websafe_encode(credentials[0].credential_id): {
-                        "keyHandle": sign_key.key_handle,
-                        "tbs": ph_data,
-                        "additionalArgs": cbor.encode(args),
-                    },
-                },
-            }
+                "signByCredential": sign_by_credential,
+            },
+            PreviewSign5Extension.NAME: {
+                "signByCredential": sign_by_credential,
+                "support": True,
+            },
         },
     }
 )
@@ -137,7 +153,10 @@ result = client.get_assertion(
 # Only one cred in allowCredentials, only one response.
 result = result.get_response(0)
 
-sign_result = result.client_extension_results[PreviewSignExtension.NAME]
+sign_result = (
+    result.client_extension_results.get(PreviewSign5Extension.NAME)
+    or result.client_extension_results[PreviewSignExtension.NAME]
+)
 print("GET sign result", sign_result)
 
 # Response contains a signature over message
