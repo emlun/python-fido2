@@ -685,6 +685,11 @@ class _SignInputs(_JsonDataObject):
 
 
 @dataclass(eq=False, frozen=True)
+class _Sign5Inputs(_SignInputs):
+    support: bool = False
+
+
+@dataclass(eq=False, frozen=True)
 class _SignGeneratedKey(_JsonDataObject):
     key_handle: bytes
     public_key: bytes
@@ -696,6 +701,17 @@ class _SignGeneratedKey(_JsonDataObject):
 class _SignOutputs(_JsonDataObject):
     generated_key: _SignGeneratedKey | None = None
     signature: bytes | None = None
+
+
+@dataclass(eq=False, frozen=True)
+class _Sign5Outputs(_SignOutputs):
+    support: list[_Sign5SupportedAlgorithm] | None = None
+
+
+@dataclass(eq=False, frozen=True)
+class _Sign5SupportedAlgorithm(_JsonDataObject):
+    credential: int
+    previewSign5: int
 
 
 class PreviewSignExtension(Ctap2Extension):
@@ -806,6 +822,199 @@ class PreviewSignExtension(Ctap2Extension):
                     return {PreviewSignExtension.NAME: _SignOutputs(signature=data[6])}
 
         return Processor()
+
+
+class PreviewSign5Extension(Ctap2Extension):
+    """
+    WARNING: This extension is currently in DRAFT.
+    It is to be considered experimental, and NOT part of the stable API of this library.
+
+    Implements version 5-SNAPSHOT-2026-09-18T15:58 of the sign CTAP2 extension.
+
+    https://github.com/yubicolabs/webauthn-sign-extension
+    """
+
+    NAME = "previewSign5"
+
+    def is_supported(self, ctap):
+        return self.NAME in ctap.info.extensions
+
+    def make_credential(self, ctap, options, pin_protocol):
+        inputs = options.extensions or {}
+        data = _Sign5Inputs.from_dict(inputs.get(self.NAME))
+        if not data or not self.is_supported(ctap):
+            return
+
+        if data.sign_by_credential or (not data.generate_key and not data.support):
+            raise ValueError("Invalid inputs")
+
+        class Processor(RegistrationExtensionProcessor):
+            def prepare_inputs(self, pin_token):
+                gk = data.generate_key
+
+                selection = (
+                    options.authenticator_selection or AuthenticatorSelectionCriteria()
+                )
+                flags = (
+                    0b101
+                    if selection.user_verification
+                    == UserVerificationRequirement.REQUIRED
+                    else 0b001
+                )
+                outputs = {3: gk.algorithms, 4: flags}
+                if data.support:
+                    outputs[8] = True
+
+                return {PreviewSign5Extension.NAME: outputs}
+
+            def prepare_outputs(self, response, pin_token):
+                extensions = response.auth_data.extensions or {}
+                data = extensions.get(PreviewSign5Extension.NAME)
+                if not data:
+                    return None
+
+                generated_key = None
+                if 3 in data:
+                    att_obj_bytes = response.unsigned_extension_outputs[
+                        PreviewSign5Extension.NAME
+                    ][7]
+                    att_obj = AttestationResponse.from_dict(
+                        cast(Mapping, cbor.decode(att_obj_bytes))
+                    )
+                    cred_data = att_obj.auth_data.credential_data
+                    assert cred_data is not None  # noqa: S101
+                    kh = cred_data.credential_id
+                    pk = cred_data.public_key
+                    generated_key = _SignGeneratedKey(
+                        key_handle=kh,
+                        public_key=cbor.encode(pk),
+                        algorithm=data.get(3),
+                        attestation_object=att_obj_bytes,
+                    )
+
+                support = None
+                if 8 in data:
+                    support = PreviewSign5Extension.parse_support_list(data[8])
+
+                return {
+                    PreviewSign5Extension.NAME: _Sign5Outputs(
+                        generated_key=generated_key,
+                        support=support,
+                    )
+                }
+
+        return Processor()
+
+    def get_assertion(self, ctap, options, pin_protocol):
+        inputs = options.extensions or {}
+        data = _Sign5Inputs.from_dict(inputs.get(self.NAME))
+        if not data or not self.is_supported(ctap):
+            return
+
+        if (not data.sign_by_credential and not data.support) or data.generate_key:
+            raise ValueError("Invalid inputs")
+
+        class Processor(AuthenticationExtensionProcessor):
+            def prepare_inputs(self, selected, pin_token):
+                by_creds = data.sign_by_credential
+
+                # Make sure all keys are valid IDs from allow_credentials
+                allow_list = options.allow_credentials
+                if not allow_list or not selected:
+                    raise ValueError("sign requires allowCredentials")
+                ids = {websafe_encode(c.id) for c in allow_list}
+                if ids.difference(by_creds):
+                    raise ValueError("keyHandleByCredential is not valid")
+                cred_inputs = by_creds[websafe_encode(selected.id)]
+
+                authenticator_input = {
+                    2: cred_inputs.key_handle,
+                    6: cred_inputs.tbs,
+                }
+                if cred_inputs.additional_args:
+                    authenticator_input[7] = cred_inputs.additional_args
+                if data.support:
+                    authenticator_input[8] = True
+
+                return {PreviewSign5Extension.NAME: authenticator_input}
+
+            def prepare_outputs(self, response, pin_token):
+                extensions = response.auth_data.extensions or {}
+                data = extensions.get(PreviewSign5Extension.NAME)
+                if data:
+                    signature = None
+                    if 6 in data:
+                        signature = data[6]
+                    support = None
+                    if 8 in data:
+                        support = PreviewSign5Extension.parse_support_list(data[8])
+                    return {
+                        PreviewSign5Extension.NAME: _Sign5Outputs(
+                            signature=signature,
+                            support=support,
+                        )
+                    }
+
+        return Processor()
+
+    @classmethod
+    def parse_support_list(cls, support_list):
+        parent_algorithms = support_list[0]
+        child_algorithms = parent_algorithms
+        i = 1
+        if len(support_list) > i and isinstance(support_list[i], list):
+            child_algorithms = support_list[i]
+            i += 1
+
+        supported = False
+        supported_algorithms: set[tuple[int, int]] = set()
+        if len(support_list) > i and isinstance(support_list[i], bool):
+            supported = support_list[i]
+            i += 1
+        if not supported:
+            supported_algorithms = supported_algorithms.union(
+                [
+                    (parent_alg, child_alg)
+                    for parent_alg in parent_algorithms
+                    for child_alg in child_algorithms
+                ]
+            )
+
+        while len(support_list) > i:
+            parent_start = support_list[i]
+            i += 1
+
+            parent_end = parent_start + 1
+            if support_list[i] < 0:
+                parent_end = parent_start - support_list[i] + 1
+                i += 1
+
+            child_start = support_list[i]
+            i += 1
+
+            child_end = child_start + 1
+            if len(support_list) > i and support_list[i] < 0:
+                child_end = child_start - support_list[i] + 1
+                i += 1
+
+            for parent_idx in range(parent_start, parent_end):
+                for child_idx in range(child_start, child_end):
+                    if not supported:
+                        supported_algorithms.add(
+                            (parent_algorithms[parent_idx], child_algorithms[child_idx])
+                        )
+                    else:
+                        supported_algorithms.remove(
+                            (parent_algorithms[parent_idx], child_algorithms[child_idx])
+                        )
+
+        return [
+            _Sign5SupportedAlgorithm(
+                credential=parent_alg,
+                previewSign5=child_alg,
+            )
+            for (parent_alg, child_alg) in sorted(supported_algorithms)
+        ]
 
 
 _DEFAULT_EXTENSIONS = [

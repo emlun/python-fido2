@@ -176,6 +176,7 @@ class AssertionResponse(_CborDataObject):
     :ivar user: The user data of the credential.
     :ivar number_of_credentials: The total number of responses available
         (only set for the first response, if > 1).
+    :ivar unsigned_extension_outputs: Any unsigned outputs of extensions.
     """
 
     credential: Mapping[str, Any]
@@ -185,6 +186,7 @@ class AssertionResponse(_CborDataObject):
     number_of_credentials: int | None = None
     user_selected: bool | None = None
     large_blob_key: bytes | None = None
+    unsigned_extension_outputs: dict[str, Any] = field(default_factory=dict)
 
     def verify(self, client_param: bytes, public_key: CoseKey):
         """Verify the digital signature of the response with regard to the
