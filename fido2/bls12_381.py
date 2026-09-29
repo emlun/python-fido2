@@ -1381,7 +1381,7 @@ def opt_ate_pairing(
     T = Q
     if c[-1] == -1:
         T = -T
-    for i in reversed(range(len(c))):
+    for i in reversed(range(len(c) - 1)):
         print(i, f)
         Tunt = T.to_affine().untwist()
         f = f**2 * line_function(ft, Tunt, Tunt, Paff)
