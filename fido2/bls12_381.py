@@ -783,16 +783,19 @@ class PointAffine:
             self.coordinate_to_big_endian(self.y),
         )
 
-    def to_bytes_compact(self):
-        c_bit = 1
+    def to_bytes_compact(self, compress=True):
+        c_bit = 1 if compress else 0
         i_bit = 1 if self.is_zero() else 0
         s_bit = 0 if i_bit != 0 or c_bit == 0 else self.crv.field.sign_gf_p_m(self.y)
         m_byte = (c_bit << 7) | (i_bit << 6) | (s_bit << 5)
         if i_bit == 0:
             x_string = self.crv.field.to_bytes(self.x)
-            return bytes([m_byte | x_string[0]]) + x_string[1:]
+            y_string = b'' if compress else self.crv.field.to_bytes(self.y)
+            return bytes([m_byte | x_string[0]]) + x_string[1:] + y_string
         else:
-            return bytes([m_byte]) + (bytes([0]) * (self.crv.field.serialized_len() - 1))
+            x_string = (bytes([0]) * (self.crv.field.serialized_len() - 1))
+            y_string = b'' if compress else (bytes([0]) * self.crv.field.serialized_len())
+            return bytes([m_byte]) + x_string + y_string
 
     def to_sec1_uncompressed(self):
         x, y = self.to_big_endian_coordinates()
@@ -971,8 +974,8 @@ class PointProjective:
 
         return result
 
-    def to_bytes_compact(self):
-        return self.to_affine().to_bytes_compact()
+    def to_bytes_compact(self, compress=True):
+        return self.to_affine().to_bytes_compact(compress=compress)
 
     def to_sec1_uncompressed(self):
         return self.to_affine().to_sec1_uncompressed()
