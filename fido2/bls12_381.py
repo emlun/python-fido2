@@ -734,7 +734,7 @@ class Rational:
 
 
 class Curve:
-    def __init__(self, field, a, b, n, generator, untwist_field=None, psi_inv=None, pairing=None, t=None, c=None):
+    def __init__(self, field, a, b, n, generator, untwist_field=None, psi_inv=None, psi=None, pairing=None, t=None, c=None):
         self.field = field
         self.a = a
         self.b = b
@@ -753,11 +753,13 @@ class Curve:
         else:
             self.generator = None
 
-        if not (untwist_field, psi_inv) == (None, None):
+        if not (untwist_field, psi_inv, psi) == (None, None, None):
             assert untwist_field is not None
             assert psi_inv is not None
+            assert psi is not None
             self.untwist_field = untwist_field
             self.psi_inv = psi_inv
+            self.psi = psi
 
     def zero(self):
         return PointAffine(0, 0, self).zero().to_projective()
@@ -869,10 +871,15 @@ class PointAffine:
         else:
             return q
 
+    def twist(self) -> PointAffine:
+        if self.is_zero():
+            raise Exception("Cannot twist zero point")
+        return PointAffine(*self.crv.psi(self.x, self.y), self.crv)
+
     def untwist(self) -> PointAffine:
         if self.is_zero():
             raise Exception("Cannot untwist zero point")
-        return PointAffine(*self.crv.psi_inv(self.x, self.y), None)
+        return PointAffine(*self.crv.psi_inv(self.x, self.y), self.crv)
 
     def trace_map(self):
         q = self.crv.field.characteristic()
@@ -1010,6 +1017,9 @@ class PointProjective:
         zinv = self.crv.field.invert(self.z)
         p = PointAffine(self.x * zinv, self.y * zinv, self.crv)
         return p.zero() if self.is_zero() else p
+
+    def twist(self):
+        return self.to_affine().twist().to_projective()
 
     def untwist(self):
         return self.to_affine().untwist().to_projective()
@@ -1530,6 +1540,64 @@ def opt_ate_pairing_bls(
     return h
 
 
+def opt_ate_pairing_bn(
+        ft: ExtensionField,
+        P: PointProjective,
+        Q: PointProjective,
+        c: list[-1 | 0 | 1],
+        t: int,
+) -> Polynomial:
+    assert isinstance(P, PointProjective)
+    assert isinstance(Q, PointProjective)
+    assert all(ci in [-1, 0, 1] for ci in c), c
+    assert sum(ci * 2**i for i, ci in enumerate(c)) == 6 * t + 2
+    assert P.crv.n == Q.crv.n
+    k = ft.ext_degree()
+    p = P.crv.field.characteristic()
+    r = P.crv.n
+
+    Paff = P.to_affine()
+    Qaff = Q.to_affine().untwist()
+    Qaffneg = -Qaff
+
+    f = 1
+    T = Q
+    if c[-1] == -1:
+        T = -T
+    for i in reversed(range(len(c) - 1)):
+        print(i, f)
+        Tunt = T.to_affine().untwist()
+        f = f**2 * line_function(ft, Tunt, Tunt, Paff)
+        T = T + T
+        if c[i] == 1:
+            f = f * line_function(ft, T.to_affine().untwist(), Qaff, Paff)
+            T = T + Q
+        elif c[i] == -1:
+            f = f * line_function(ft, T.to_affine().untwist(), Qaffneg, Paff)
+            T = T - Q
+
+    Q_1_unt = Q.untwist().to_affine().frobenius()
+    Q_2_unt = Q_1_unt.frobenius()
+    f = f * line_function(ft, T.to_affine().untwist(), Q_1_unt, Paff)
+    T = T + Q_1_unt.twist().to_projective()
+    f = f * line_function(ft, T.to_affine().untwist(), -Q_2_unt, Paff)
+
+    d = k // 2
+    q = ft.characteristic()
+    uif = UnboundedIntegerField()
+    phi_k = uif.cyclotomic(k)
+    g = f.frobenius(d) / f
+    q_pol, q_pol_rem = (uif.monoup(d) + 1).long_div(phi_k)
+    assert q_pol_rem.is_zero()
+    assert all(c in [0, 1] for c in q_pol.coeffs)
+    g = product(g.frobenius(i) for i, qi in enumerate(q_pol.coeffs) if qi == 1)
+    h = 1
+    for c in decompose_base_q(phi_k.eval(q) // r, q):
+        h *= g**c
+        g = g.frobenius()
+    return h
+
+
 def construct_bls_curves():
     t = -(2**63) - 2**62 - 2**60 - 2**57 - 2**48 - 2**16
     c = [0]*64
@@ -1595,6 +1663,79 @@ def construct_bls_curves():
         ),
         untwist_field=gfp12,
         psi_inv=lambda x, y: (gfp12.promote(x) / gfp12.mono(2), gfp12.promote(y) / gfp12.mono(3)),
+        psi=lambda x, y: ((x * gfp12.mono(2)).demote().demote(), (y * gfp12.mono(3)).demote().demote()),
     )
     return CRV_BLS, CRV_BLS_G1, CRV_BLS_G2
 CRV_BLS, CRV_BLS_G1, CRV_BLS_G2 = construct_bls_curves()
+
+def construct_bn_curves():
+    t = 2**114 + 2**101 - 2**14 - 1
+    c = [0]*117
+    c[2] = -1
+    c[15] = -1
+    c[16] = -1
+    c[102] = 1
+    c[103] = 1
+    c[115] = 1
+    c[116] = 1
+    assert sum(ci * (2**i) for i, ci in enumerate(c)) == 6 * t + 2
+    p = 36 * t**4 + 36 * t**3 + 24 * t**2 + 6 * t + 1
+    r = 36 * t**4 + 36 * t**3 + 18 * t**2 + 6 * t + 1
+    h_g1 = 1
+    h_g2 = 0x240480360120023ffffffffff6ff0cf6b7d9bfca0000000000d812908fa1ce0227fffffffff6ff66fc63f5f7f4c0000000002401b008a0168019
+    assert (
+        p
+        == 0x240480360120023ffffffffff6ff0cf6b7d9bfca0000000000d812908f41c8020ffffffffff6ff66fc6ff687f640000000002401b00840138013
+    )
+    assert r == 0x240480360120023ffffffffff6ff0cf6b7d9bfca0000000000d812908ee1c201f7fffffffff6ff66fc7bf717f7c0000000002401b007e010800d
+    gfp = PrimeField(p)
+    gfp2 = ExtensionField(gfp, [1, 0, 1])
+    gfp6 = ExtensionField(
+        gfp2, [-gfp2.mono(1) - 2 * gfp2.mono(0), gfp2.zero(), gfp2.zero(), gfp2.one()]
+    )
+    gfp12 = ExtensionField(gfp6, [-gfp6.mono(1), gfp6.zero(), gfp6.one()])
+    CRV_BN462 = Curve(
+        field=gfp12,
+        a=gfp12.zero(),
+        b=5 * gfp12.one(),
+        n=r,
+        generator=(
+            0x21a6d67ef250191fadba34a0a30160b9ac9264b6f95f63b3edbec3cf4b2e689db1bbb4e69a416a0b1e79239c0372e5cd70113c98d91f36b6980d,
+            0x0118ea0460f7f7abb82b33676a7432a490eeda842cccfa7d788c659650426e6af77df11b8ae40eb80f475432c66600622ecaa8a5734d36fb03de,
+        ),
+        pairing=opt_ate_pairing_bn,
+        t=t,
+        c=c,
+    )
+    CRV_BN462_G1 = Curve(
+        field=gfp,
+        a=gfp.zero(),
+        b=5 * gfp.one(),
+        n=r,
+        generator=(
+            0x21a6d67ef250191fadba34a0a30160b9ac9264b6f95f63b3edbec3cf4b2e689db1bbb4e69a416a0b1e79239c0372e5cd70113c98d91f36b6980d,
+            0x0118ea0460f7f7abb82b33676a7432a490eeda842cccfa7d788c659650426e6af77df11b8ae40eb80f475432c66600622ecaa8a5734d36fb03de,
+        ),
+    )
+    CRV_BN462_G2 = Curve(
+        field=gfp2,
+        a=gfp2.zero(),
+        b=-gfp2.mono(1) + 2 * gfp2.mono(0),
+        n=r,
+        generator=(
+            [
+                0x0257ccc85b58dda0dfb38e3a8cbdc5482e0337e7c1cd96ed61c913820408208f9ad2699bad92e0032ae1f0aa6a8b48807695468e3d934ae1e4df,
+                0x1d2e4343e8599102af8edca849566ba3c98e2a354730cbed9176884058b18134dd86bae555b783718f50af8b59bf7e850e9b73108ba6aa8cd283,
+            ],
+            [
+                0x0a0650439da22c1979517427a20809eca035634706e23c3fa7a6bb42fe810f1399a1f41c9ddae32e03695a140e7b11d7c3376e5b68df0db7154e,
+                0x073ef0cbd438cbe0172c8ae37306324d44d5e6b0c69ac57b393f1ab370fd725cc647692444a04ef87387aa68d53743493b9eba14cc552ca2a93a,
+            ],
+        ),
+        untwist_field=gfp12,
+        psi_inv=lambda x, y: (gfp12.promote(x) * gfp12.mono(2), gfp12.promote(y) * gfp12.mono(3)),
+        psi=lambda x, y: ((x / gfp12.mono(2)).demote().demote(), (y / gfp12.mono(3)).demote().demote()),
+    )
+
+    return CRV_BN462, CRV_BN462_G1, CRV_BN462_G2
+CRV_BN462, CRV_BN462_G1, CRV_BN462_G2 = construct_bn_curves()
