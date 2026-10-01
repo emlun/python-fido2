@@ -123,7 +123,7 @@ class PrimeField:
     def one(self) -> int:
         return 1
 
-    def monoup(self, degree: int) -> int:
+    def monoup(self, degree: int) -> Polynomial:
         return self.pol([0] * degree + [1])
 
     def invert(self, a):
