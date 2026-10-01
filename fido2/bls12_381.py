@@ -734,12 +734,15 @@ class Rational:
 
 
 class Curve:
-    def __init__(self, field, a, b, n, generator, untwist_field=None, psi_inv=None):
+    def __init__(self, field, a, b, n, generator, untwist_field=None, psi_inv=None, pairing=None, t=None, c=None):
         self.field = field
         self.a = a
         self.b = b
         self.n = n
         self.scalar_len = math.ceil(math.log2(n) / 8)
+        self._pairing = pairing
+        self.t = t
+        self.c = c
 
         if generator is not None:
             (gx, gy) = generator
@@ -758,6 +761,15 @@ class Curve:
 
     def zero(self):
         return PointAffine(0, 0, self).zero().to_projective()
+
+    def pairing(self, P: PointProjective, Q: PointProjective) -> Polynomial:
+        return self._pairing(
+            self.field,
+            P,
+            Q,
+            self.c,
+            self.t,
+        )
 
     # def pow(self, b, e):
     #     return modpow(b, e, self.p)
@@ -1460,19 +1472,19 @@ def miller_weil_pairing(P: PointAffine, Q: PointAffine) -> Polynomial:
     return frp_dq / wr_denominator
 
 
-def opt_ate_pairing(
+def opt_ate_pairing_bls(
         ft: ExtensionField,
         P: PointProjective,
         Q: PointProjective,
         c: list[-1 | 0 | 1],
         t: int,
-        k: int,
 ) -> Polynomial:
     assert isinstance(P, PointProjective)
     assert isinstance(Q, PointProjective)
     assert all(ci in [-1, 0, 1] for ci in c), c
     assert sum(ci * 2**i for i, ci in enumerate(c)) == t
     assert P.crv.n == Q.crv.n
+    k = ft.ext_degree()
     p = P.crv.field.characteristic()
     r = P.crv.n
 
@@ -1521,7 +1533,6 @@ c[60] = -1
 c[62] = -1
 c[63] = -1
 assert sum(ci * (2**i) for i, ci in enumerate(c)) == t
-k = 12
 p = (t - 1) ** 2 * (t**4 - t**2 + 1) // 3 + t
 r = t**4 - t**2 + 1
 h_g1 = 0x396c8c005555e1568c00aaab0000aaab
@@ -1546,6 +1557,9 @@ CRV_BLS = Curve(
         0x17F1D3A73197D7942695638C4FA9AC0FC3688C4F9774B905A14E3A3F171BAC586C55E83FF97A1AEFFB3AF00ADB22C6BB,
         0x08B3F481E3AAA0F1A09E30ED741D8AE4FCF5E095D5D00AF600DB18CB2C04B3EDD03CC744A2888AE40CAA232946C5E7E1,
     ),
+    pairing=opt_ate_pairing_bls,
+    t=t,
+    c=c,
 )
 CRV_BLS_G1 = Curve(
     field=gfp,

@@ -48,7 +48,7 @@ c[57] = -1
 c[48] = -1
 c[16] = -1
 k = 12
-# e = opt_ate_pairing(P, Q, c, t, k, untwist)
+# e = opt_ate_pairing_bls(P, Q, c, t, k, untwist)
 # print(e)
 # print(e.to_bytes().hex())
 
