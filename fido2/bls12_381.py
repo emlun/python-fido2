@@ -42,6 +42,18 @@ def gcd(a, b):
         return gcd(b, a % b)
 
 
+def decompose_base_q(n: int, q: int) -> int:
+    rem = n
+    coeffs = []
+    imax = 0
+    while q**imax < n:
+        imax += 1
+    for i in reversed(range(0, imax)):
+        quot, rem = divmod(rem, q**i)
+        coeffs.append(quot)
+    return list(reversed(coeffs))
+
+
 primes = [2, 3]
 
 
@@ -1493,8 +1505,11 @@ def opt_ate_pairing(
     assert q_pol_rem.is_zero()
     assert all(c in [0, 1] for c in q_pol.coeffs)
     g = product(g.frobenius(i) for i, qi in enumerate(q_pol.coeffs) if qi == 1)
-    g = g**(phi_k.eval(q) // r)
-    return g
+    h = 1
+    for c in decompose_base_q(phi_k.eval(q) // r, q):
+        h *= g**c
+        g = g.frobenius()
+    return h
 
 
 t = -(2**63) - 2**62 - 2**60 - 2**57 - 2**48 - 2**16
