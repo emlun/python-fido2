@@ -1524,68 +1524,71 @@ def opt_ate_pairing_bls(
     return h
 
 
-t = -(2**63) - 2**62 - 2**60 - 2**57 - 2**48 - 2**16
-c = [0]*64
-c[16] = -1
-c[48] = -1
-c[57] = -1
-c[60] = -1
-c[62] = -1
-c[63] = -1
-assert sum(ci * (2**i) for i, ci in enumerate(c)) == t
-p = (t - 1) ** 2 * (t**4 - t**2 + 1) // 3 + t
-r = t**4 - t**2 + 1
-h_g1 = 0x396c8c005555e1568c00aaab0000aaab
-h_g2 = 0x5D543A95414E7F1091D50792876A202CD91DE4547085ABAA68A205B2E5A7DDFA628F1CB4D9E82EF21537E293A6691AE1616EC6E786F0C70CF1C38E31C7238E5
-assert (
-    p
-    == 0x1A0111EA397FE69A4B1BA7B6434BACD764774B84F38512BF6730D2A0F6B0F6241EABFFFEB153FFFFB9FEFFFFFFFFAAAB
-)
-assert r == 0x73EDA753299D7D483339D80809A1D80553BDA402FFFE5BFEFFFFFFFF00000001
-gfp = PrimeField(p)
-gfp2 = ExtensionField(gfp, [1, 0, 1])
-gfp6 = ExtensionField(
-    gfp2, [-gfp2.mono(1) - gfp2.mono(0), gfp2.zero(), gfp2.zero(), gfp2.one()]
-)
-gfp12 = ExtensionField(gfp6, [-gfp6.mono(1), gfp6.zero(), gfp6.one()])
-CRV_BLS = Curve(
-    field=gfp12,
-    a=gfp12.zero(),
-    b=4 * gfp12.one(),
-    n=r,
-    generator=(
-        0x17F1D3A73197D7942695638C4FA9AC0FC3688C4F9774B905A14E3A3F171BAC586C55E83FF97A1AEFFB3AF00ADB22C6BB,
-        0x08B3F481E3AAA0F1A09E30ED741D8AE4FCF5E095D5D00AF600DB18CB2C04B3EDD03CC744A2888AE40CAA232946C5E7E1,
-    ),
-    pairing=opt_ate_pairing_bls,
-    t=t,
-    c=c,
-)
-CRV_BLS_G1 = Curve(
-    field=gfp,
-    a=gfp.zero(),
-    b=4 * gfp.one(),
-    n=r,
-    generator=(
-        0x17F1D3A73197D7942695638C4FA9AC0FC3688C4F9774B905A14E3A3F171BAC586C55E83FF97A1AEFFB3AF00ADB22C6BB,
-        0x08B3F481E3AAA0F1A09E30ED741D8AE4FCF5E095D5D00AF600DB18CB2C04B3EDD03CC744A2888AE40CAA232946C5E7E1,
-    ),
-)
-CRV_BLS_G2 = Curve(
-    field=gfp2,
-    a=gfp2.zero(),
-    b=4 * (gfp2.mono(1) + gfp2.mono(0)),
-    n=r,
-    generator=(
-        [
-            0x024AA2B2F08F0A91260805272DC51051C6E47AD4FA403B02B4510B647AE3D1770BAC0326A805BBEFD48056C8C121BDB8,
-            0x13E02B6052719F607DACD3A088274F65596BD0D09920B61AB5DA61BBDC7F5049334CF11213945D57E5AC7D055D042B7E,
-        ],
-        [
-            0x0CE5D527727D6E118CC9CDC6DA2E351AADFD9BAA8CBDD3A76D429A695160D12C923AC9CC3BACA289E193548608B82801,
-            0x0606C4A02EA734CC32ACD2B02BC28B99CB3E287E85A763AF267492AB572E99AB3F370D275CEC1DA1AAA9075FF05F79BE,
-        ],
-    ),
-    untwist_field=gfp12,
-    psi_inv=lambda x, y: (gfp12.promote(x) / gfp12.mono(2), gfp12.promote(y) / gfp12.mono(3)),
-)
+def construct_bls_curves():
+    t = -(2**63) - 2**62 - 2**60 - 2**57 - 2**48 - 2**16
+    c = [0]*64
+    c[16] = -1
+    c[48] = -1
+    c[57] = -1
+    c[60] = -1
+    c[62] = -1
+    c[63] = -1
+    assert sum(ci * (2**i) for i, ci in enumerate(c)) == t
+    p = (t - 1) ** 2 * (t**4 - t**2 + 1) // 3 + t
+    r = t**4 - t**2 + 1
+    h_g1 = 0x396c8c005555e1568c00aaab0000aaab
+    h_g2 = 0x5D543A95414E7F1091D50792876A202CD91DE4547085ABAA68A205B2E5A7DDFA628F1CB4D9E82EF21537E293A6691AE1616EC6E786F0C70CF1C38E31C7238E5
+    assert (
+        p
+        == 0x1A0111EA397FE69A4B1BA7B6434BACD764774B84F38512BF6730D2A0F6B0F6241EABFFFEB153FFFFB9FEFFFFFFFFAAAB
+    )
+    assert r == 0x73EDA753299D7D483339D80809A1D80553BDA402FFFE5BFEFFFFFFFF00000001
+    gfp = PrimeField(p)
+    gfp2 = ExtensionField(gfp, [1, 0, 1])
+    gfp6 = ExtensionField(
+        gfp2, [-gfp2.mono(1) - gfp2.mono(0), gfp2.zero(), gfp2.zero(), gfp2.one()]
+    )
+    gfp12 = ExtensionField(gfp6, [-gfp6.mono(1), gfp6.zero(), gfp6.one()])
+    CRV_BLS = Curve(
+        field=gfp12,
+        a=gfp12.zero(),
+        b=4 * gfp12.one(),
+        n=r,
+        generator=(
+            0x17F1D3A73197D7942695638C4FA9AC0FC3688C4F9774B905A14E3A3F171BAC586C55E83FF97A1AEFFB3AF00ADB22C6BB,
+            0x08B3F481E3AAA0F1A09E30ED741D8AE4FCF5E095D5D00AF600DB18CB2C04B3EDD03CC744A2888AE40CAA232946C5E7E1,
+        ),
+        pairing=opt_ate_pairing_bls,
+        t=t,
+        c=c,
+    )
+    CRV_BLS_G1 = Curve(
+        field=gfp,
+        a=gfp.zero(),
+        b=4 * gfp.one(),
+        n=r,
+        generator=(
+            0x17F1D3A73197D7942695638C4FA9AC0FC3688C4F9774B905A14E3A3F171BAC586C55E83FF97A1AEFFB3AF00ADB22C6BB,
+            0x08B3F481E3AAA0F1A09E30ED741D8AE4FCF5E095D5D00AF600DB18CB2C04B3EDD03CC744A2888AE40CAA232946C5E7E1,
+        ),
+    )
+    CRV_BLS_G2 = Curve(
+        field=gfp2,
+        a=gfp2.zero(),
+        b=4 * (gfp2.mono(1) + gfp2.mono(0)),
+        n=r,
+        generator=(
+            [
+                0x024AA2B2F08F0A91260805272DC51051C6E47AD4FA403B02B4510B647AE3D1770BAC0326A805BBEFD48056C8C121BDB8,
+                0x13E02B6052719F607DACD3A088274F65596BD0D09920B61AB5DA61BBDC7F5049334CF11213945D57E5AC7D055D042B7E,
+            ],
+            [
+                0x0CE5D527727D6E118CC9CDC6DA2E351AADFD9BAA8CBDD3A76D429A695160D12C923AC9CC3BACA289E193548608B82801,
+                0x0606C4A02EA734CC32ACD2B02BC28B99CB3E287E85A763AF267492AB572E99AB3F370D275CEC1DA1AAA9075FF05F79BE,
+            ],
+        ),
+        untwist_field=gfp12,
+        psi_inv=lambda x, y: (gfp12.promote(x) / gfp12.mono(2), gfp12.promote(y) / gfp12.mono(3)),
+    )
+    return CRV_BLS, CRV_BLS_G1, CRV_BLS_G2
+CRV_BLS, CRV_BLS_G1, CRV_BLS_G2 = construct_bls_curves()
