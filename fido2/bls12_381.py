@@ -885,6 +885,9 @@ class PointAffine:
             start=self.crv.zero().to_affine(),
         )
 
+    def frobenius(self):
+        return PointAffine(self.crv.field.frobenius(self.x), self.crv.field.frobenius(self.y), self.crv)
+
     def anti_trace_map(self):
         k = self.crv.field.ext_degree()
         return self * k - self.trace_map()
@@ -1010,6 +1013,9 @@ class PointProjective:
 
     def untwist(self):
         return self.to_affine().untwist().to_projective()
+
+    def frobenius(self):
+        return self.to_affine().frobenius().to_projective()
 
     def is_zero(self):
         return self.z == 0
