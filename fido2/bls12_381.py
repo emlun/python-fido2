@@ -133,11 +133,55 @@ class PrimeField:
         assert isinstance(a, int), a
         return modinv(a, self.q)
 
+    def frobenius(self, a: int) -> int:
+        return a
+
     def sign_gf_p_m(self, a):
         return 1 if a > (self.q - 1) // 2 else 0
 
     def __repr__(self):
         return f"Field(q={self.q})"
+
+
+class UnboundedIntegerField:
+    def ext_degree(self):
+        return 1
+
+    def el(self, el: int) -> int:
+        return el
+
+    def promote(self, el: int | Polynomial) -> int | Polynomial:
+        assert isinstance(el, (int, Polynomial)), (el, self)
+        return el
+
+    def pol(self, coeffs: list[int]) -> Polynomial:
+        return Polynomial([self.el(c) for c in coeffs], self, None)
+
+    def zero(self) -> int:
+        return 0
+
+    def is_zero(self, a):
+        return a == 0
+
+    def one(self) -> int:
+        return 1
+
+    def monoup(self, degree: int) -> Polynomial:
+        return self.pol([0] * degree + [1])
+
+    def cyclotomic(self, k: int) -> Polynomial:
+        if k == 1:
+            return self.pol([-1, 1])
+        else:
+            res = self.monoup(k) - 1
+            for d in range(1, k):
+                if k % d == 0:
+                    res, rem = res.long_div(self.cyclotomic(d))
+                    assert rem.is_zero()
+            return res
+
+    def __repr__(self):
+        return f"UnboundedIntegerField()"
 
 
 class ExtensionField:
@@ -254,6 +298,9 @@ class ExtensionField:
         assert a.pfield is self, (a, self)
         return a.inv()
 
+    def frobenius(self, a: Polynomial) -> Polynomial:
+        return a.frobenius()
+
     def sign_gf_p_m(self, a):
         for c in reversed(a.coeffs):
             if not a.cfield.is_zero(c):
@@ -272,7 +319,7 @@ class Polynomial:
         pfield: None | ExtensionField,
     ):
         assert isinstance(coeffs, list)
-        assert isinstance(cfield, (PrimeField, ExtensionField))
+        assert isinstance(cfield, (PrimeField, UnboundedIntegerField, ExtensionField))
         assert pfield is None or isinstance(pfield, ExtensionField)
         self.coeffs = coeffs  # Little-endian order
         self.cfield = cfield  # Field of coefficients
@@ -308,6 +355,9 @@ class Polynomial:
     def to_bytes(self) -> bytes:
         return self.pfield.to_bytes(self)
 
+    def is_zero(self) -> bool:
+        return all(self.cfield.is_zero(c) for c in self.coeffs)
+
     def degree(self) -> int:
         return max((i for i, cb in enumerate(self.coeffs) if cb != 0), default=0)
 
@@ -329,8 +379,20 @@ class Polynomial:
             else:
                 return self.trunc()
 
+    def demote(self) -> Polynomial | int:
+        if all(c == self.cfield.zero() for c in self.coeffs[1:]):
+            return self.coeffs[0]
+        else:
+            raise ValueError()
+
     def trunc(self) -> int:
         return self.sibl(self.coeffs[: (self.degree() + 1)])
+
+    def leading_coeff(self) -> int | Polynomial:
+        for c in reversed(self.coeffs):
+            if not self.cfield.is_zero(c):
+                return c
+        return self.cfield.zero()
 
     def eval(self, x: int | Polynomial | PointAffine) -> int | Polynomial:
         if isinstance(x, (int, Polynomial)):
@@ -346,6 +408,20 @@ class Polynomial:
             if q == 0:
                 return self.pfield.one()
             return b.gcd(r)
+
+    def long_div(self, denom: Polynomial) -> (Polynomial, Polynomial):
+        quot = self.cfield.pol([0])
+        rem = self
+        denom_lead = denom.leading_coeff()
+
+        while rem.degree() >= denom.degree():
+            k, k_rem = divmod(rem.leading_coeff(), denom_lead)
+            assert self.cfield.is_zero(k_rem)
+            d = self.cfield.monoup(rem.degree() - denom.degree()) * k
+            quot += d
+            rem -= d * denom
+
+        return quot, rem
 
     # https://en.wikipedia.org/wiki/Extended_Euclidean_algorithm#Pseudocode
     def div_euclid(self, b: Polynomial) -> (Polynomial, Polynomial, Polynomial):
@@ -375,6 +451,21 @@ class Polynomial:
             raise ValueError("Either p is not irreducible or a is a multiple of p")
 
         return s * self.cfield.invert(gcd.coeffs[0])
+
+    def frobenius(self, n=1) -> Polynomial:
+        if n == 0:
+            return self
+
+        q = self.cfield.characteristic()
+        d = self.pfield.modulus.degree()
+        assert q % d == 1
+        monomial = self.pfield.mono(d).demote()
+        if isinstance(self.cfield, ExtensionField):
+            return self.sibl([c.frobenius() * monomial**(i * (q - 1) // d) for i, c in enumerate(self.coeffs)]).frobenius(n-1)
+        elif isinstance(self.cfield, PrimeField):
+            return self.sibl([c * pow(monomial, i * (q - 1) // d, self.cfield.q) for i, c in enumerate(self.coeffs)]).frobenius(n-1)
+        else:
+            raise ValueError()
 
     def __eq__(self, o):
         if isinstance(o, int):
@@ -1392,15 +1483,18 @@ def opt_ate_pairing(
         elif c[i] == -1:
             f = f * line_function(ft, T.to_affine().untwist(), Qaffneg, Paff)
             T = T - Q
-    quot, rem = divmod(p**k - 1, r)
-    print("p", p)
-    print("r", r)
-    print("p**k - 1", p**k - 1)
-    print("quot", quot)
-    print("rem", rem)
-    assert rem == 0
-    f = f**quot
-    return f
+
+    d = k // 2
+    q = ft.characteristic()
+    uif = UnboundedIntegerField()
+    phi_k = uif.cyclotomic(k)
+    g = f.frobenius(d) / f
+    q_pol, q_pol_rem = (uif.monoup(d) + 1).long_div(phi_k)
+    assert q_pol_rem.is_zero()
+    assert all(c in [0, 1] for c in q_pol.coeffs)
+    g = product(g.frobenius(i) for i, qi in enumerate(q_pol.coeffs) if qi == 1)
+    g = g**(phi_k.eval(q) // r)
+    return g
 
 
 t = -(2**63) - 2**62 - 2**60 - 2**57 - 2**48 - 2**16
