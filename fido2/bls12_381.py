@@ -388,9 +388,9 @@ class Polynomial:
         return hash((tuple(self.coeffs), self.cfield, self.pfield))
 
     def __repr__(self):
-        # comps_hex = ", ".join([f"0x{int.to_bytes(c, self.cfield.coord_len, 'big').hex()}" for c in self.coeffs])
-        comps_dec = ", ".join(str(c) for c in self.coeffs)
-        comps = comps_dec
+        comps = ", ".join(str(c) for c in self.coeffs)
+        if isinstance(self.cfield, PrimeField):
+            comps = ", ".join([hex(c) for c in self.coeffs])
         return f"F[{comps}]"
 
     def __neg__(self):
