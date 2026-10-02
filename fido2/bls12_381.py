@@ -1500,6 +1500,7 @@ def opt_ate_pairing_bls(
     assert all(ci in [-1, 0, 1] for ci in c), c
     assert sum(ci * 2**i for i, ci in enumerate(c)) == t
     assert P.crv.n == Q.crv.n
+    assert c[-1] != 0
     k = ft.ext_degree()
     p = P.crv.field.characteristic()
     r = P.crv.n
@@ -1551,6 +1552,7 @@ def opt_ate_pairing_bn(
     assert isinstance(Q, PointProjective)
     assert all(ci in [-1, 0, 1] for ci in c), c
     assert sum(ci * 2**i for i, ci in enumerate(c)) == 6 * t + 2
+    assert c[-1] != 0
     assert P.crv.n == Q.crv.n
     k = ft.ext_degree()
     p = P.crv.field.characteristic()
