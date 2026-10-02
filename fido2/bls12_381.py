@@ -397,7 +397,7 @@ class Polynomial:
         else:
             raise ValueError()
 
-    def trunc(self) -> int:
+    def trunc(self) -> Polynomial:
         return self.sibl(self.coeffs[: (self.degree() + 1)])
 
     def leading_coeff(self) -> int | Polynomial:
