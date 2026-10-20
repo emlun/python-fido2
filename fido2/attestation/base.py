@@ -36,7 +36,6 @@ from typing import Any, Mapping, Sequence, cast
 from cryptography import x509
 from cryptography.exceptions import InvalidSignature as _InvalidSignature
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 
 from ..webauthn import AttestationObject, AuthenticatorData
 
@@ -114,25 +113,8 @@ def verify_x509_chain(chain: list[bytes]) -> None:
     while certs:
         child = cert
         cert = certs.pop(0)
-        pub = cert.public_key()
         try:
-            if isinstance(pub, rsa.RSAPublicKey):
-                assert child.signature_hash_algorithm is not None  # noqa: S101
-                pub.verify(
-                    child.signature,
-                    child.tbs_certificate_bytes,
-                    padding.PKCS1v15(),
-                    child.signature_hash_algorithm,
-                )
-            elif isinstance(pub, ec.EllipticCurvePublicKey):
-                assert child.signature_hash_algorithm is not None  # noqa: S101
-                pub.verify(
-                    child.signature,
-                    child.tbs_certificate_bytes,
-                    ec.ECDSA(child.signature_hash_algorithm),
-                )
-            else:
-                raise ValueError("Unsupported signature key type")
+            child.verify_directly_issued_by(cert)
         except _InvalidSignature:
             raise InvalidSignature()
 
