@@ -32,6 +32,7 @@ from cryptography.exceptions import UnsupportedAlgorithm, _Reasons
 from cryptography.hazmat.primitives.serialization import Encoding
 from cryptography.hazmat.primitives.asymmetric import ec, rsa, padding
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.ed448 import Ed448PrivateKey
 from cryptography.hazmat.primitives import hashes
 from fido2 import cbor, cose
 from fido2.attestation import (
@@ -469,6 +470,32 @@ def test_AttestationVerifier_ed25519():
     v.verify_attestation(att_obj, client_data_hash)
 
 
+def test_AttestationVerifier_ed448():
+    ca_key = Ed448PrivateKey.generate()
+    ee_key = Ed448PrivateKey.generate()
+    credential_key = cose.Ed448.from_cryptography_key(
+        Ed448PrivateKey.generate().public_key()
+    )
+    ca_cert = generate_attestation_ca_cert(ca_key, None)
+    ee_cert = generate_attestation_cert(ee_key.public_key(), ca_cert, ca_key, None)
+
+    rp_id_hash = sha256(b"test_AttestationVerifier.rpid")
+    credential_id = sha256(b"test_AttestationVerifier.credential_id")
+    client_data_hash = sha256(b"test_AttestationVerifier.clientdata")
+    att_obj = generate_packed_attestation_object(
+        credential_key,
+        ee_cert,
+        ee_key,
+        [],
+        rp_id_hash,
+        credential_id,
+        client_data_hash,
+    )
+
+    v = TestAttestationVerifier(ca_cert)
+    v.verify_attestation(att_obj, client_data_hash)
+
+
 def test_AttestationVerifier_mldsa44():
     from fido2.cose import _mldsa
 
@@ -483,6 +510,66 @@ def test_AttestationVerifier_mldsa44():
     ee_key = mldsa.MLDSA44PrivateKey.generate()
     credential_key = cose.MLDSA44.from_cryptography_key(
         mldsa.MLDSA44PrivateKey.generate().public_key()
+    )
+    ca_cert = generate_attestation_ca_cert(ca_key, None)
+    ee_cert = generate_attestation_cert(ee_key.public_key(), ca_cert, ca_key, None)
+
+    rp_id_hash = sha256(b"test_AttestationVerifier.rpid")
+    credential_id = sha256(b"test_AttestationVerifier.credential_id")
+    client_data_hash = sha256(b"test_AttestationVerifier.clientdata")
+
+    att_obj = generate_packed_attestation_object(
+        credential_key, ee_cert, ee_key, [], rp_id_hash, credential_id, client_data_hash
+    )
+
+    v = TestAttestationVerifier(ca_cert)
+    v.verify_attestation(att_obj, client_data_hash)
+
+
+def test_AttestationVerifier_mldsa65():
+    from fido2.cose import _mldsa
+
+    if not _mldsa:
+        raise unittest.SkipTest(
+            "MLDSA65 is not supported by this version of cryptography"
+        )
+
+    from cryptography.hazmat.primitives.asymmetric import mldsa
+
+    ca_key = mldsa.MLDSA65PrivateKey.generate()
+    ee_key = mldsa.MLDSA65PrivateKey.generate()
+    credential_key = cose.MLDSA65.from_cryptography_key(
+        mldsa.MLDSA65PrivateKey.generate().public_key()
+    )
+    ca_cert = generate_attestation_ca_cert(ca_key, None)
+    ee_cert = generate_attestation_cert(ee_key.public_key(), ca_cert, ca_key, None)
+
+    rp_id_hash = sha256(b"test_AttestationVerifier.rpid")
+    credential_id = sha256(b"test_AttestationVerifier.credential_id")
+    client_data_hash = sha256(b"test_AttestationVerifier.clientdata")
+
+    att_obj = generate_packed_attestation_object(
+        credential_key, ee_cert, ee_key, [], rp_id_hash, credential_id, client_data_hash
+    )
+
+    v = TestAttestationVerifier(ca_cert)
+    v.verify_attestation(att_obj, client_data_hash)
+
+
+def test_AttestationVerifier_mldsa87():
+    from fido2.cose import _mldsa
+
+    if not _mldsa:
+        raise unittest.SkipTest(
+            "MLDSA87 is not supported by this version of cryptography"
+        )
+
+    from cryptography.hazmat.primitives.asymmetric import mldsa
+
+    ca_key = mldsa.MLDSA87PrivateKey.generate()
+    ee_key = mldsa.MLDSA87PrivateKey.generate()
+    credential_key = cose.MLDSA87.from_cryptography_key(
+        mldsa.MLDSA87PrivateKey.generate().public_key()
     )
     ca_cert = generate_attestation_ca_cert(ca_key, None)
     ee_cert = generate_attestation_cert(ee_key.public_key(), ca_cert, ca_key, None)
