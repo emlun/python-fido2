@@ -27,10 +27,17 @@
 
 import unittest
 
+from cryptography import x509
 from cryptography.exceptions import UnsupportedAlgorithm, _Reasons
-from fido2 import cbor
+from cryptography.hazmat.primitives.serialization import Encoding
+from cryptography.hazmat.primitives.asymmetric import ec, rsa, padding
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives import hashes
+from fido2 import cbor, cose
 from fido2.attestation import (
     AndroidSafetynetAttestation,
+    AttestationResult,
+    AttestationVerifier,
     AppleAttestation,
     Attestation,
     AttestationType,
@@ -46,6 +53,12 @@ from fido2.attestation import (
 )
 from fido2.ctap2.base import AttestationResponse
 from fido2.webauthn import AuthenticatorData
+from fido2.utils import sha256
+from .test_utils import (
+    generate_attestation_ca_cert,
+    generate_attestation_cert,
+    generate_packed_attestation_object,
+)
 
 # GS Root R2 (https://pki.goog/)
 _GSR2_DER = bytes.fromhex(
@@ -361,3 +374,126 @@ def test_mldsa87_attestation():
     packed = PackedAttestation()
 
     packed.verify(att_resp.att_stmt, att_resp.auth_data, client_data_hash)
+
+
+class TestAttestationVerifier(AttestationVerifier):
+    def __init__(self, ca_cert: x509.Certificate):
+        super().__init__()
+        self._ca_cert = ca_cert
+
+    def ca_lookup(
+        self, attestation_result: AttestationResult, auth_data: AuthenticatorData
+    ) -> bytes | None:
+        return self._ca_cert.public_bytes(Encoding.DER)
+
+
+def test_AttestationVerifier_es256():
+    ca_key = ec.generate_private_key(ec.SECP256R1())
+    ee_key = ec.generate_private_key(ec.SECP256R1())
+    credential_key = cose.ES256.from_cryptography_key(
+        ec.generate_private_key(ec.SECP256R1()).public_key()
+    )
+    ca_cert = generate_attestation_ca_cert(ca_key, hashes.SHA256())
+    ee_cert = generate_attestation_cert(
+        ee_key.public_key(), ca_cert, ca_key, hashes.SHA256()
+    )
+
+    rp_id_hash = sha256(b"test_AttestationVerifier.rpid")
+    credential_id = sha256(b"test_AttestationVerifier.credential_id")
+    client_data_hash = sha256(b"test_AttestationVerifier.clientdata")
+    att_obj = generate_packed_attestation_object(
+        credential_key,
+        ee_cert,
+        ee_key,
+        [ec.ECDSA(hashes.SHA256())],
+        rp_id_hash,
+        credential_id,
+        client_data_hash,
+    )
+
+    v = TestAttestationVerifier(ca_cert)
+    v.verify_attestation(att_obj, client_data_hash)
+
+
+def test_AttestationVerifier_rs256():
+    ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    ee_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    credential_key = cose.RS256.from_cryptography_key(
+        rsa.generate_private_key(public_exponent=65537, key_size=2048).public_key()
+    )
+    ca_cert = generate_attestation_ca_cert(ca_key, hashes.SHA256())
+    ee_cert = generate_attestation_cert(
+        ee_key.public_key(), ca_cert, ca_key, hashes.SHA256()
+    )
+
+    rp_id_hash = sha256(b"test_AttestationVerifier.rpid")
+    credential_id = sha256(b"test_AttestationVerifier.credential_id")
+    client_data_hash = sha256(b"test_AttestationVerifier.clientdata")
+    att_obj = generate_packed_attestation_object(
+        credential_key,
+        ee_cert,
+        ee_key,
+        [padding.PKCS1v15(), hashes.SHA256()],
+        rp_id_hash,
+        credential_id,
+        client_data_hash,
+    )
+
+    v = TestAttestationVerifier(ca_cert)
+    v.verify_attestation(att_obj, client_data_hash)
+
+
+def test_AttestationVerifier_ed25519():
+    ca_key = Ed25519PrivateKey.generate()
+    ee_key = Ed25519PrivateKey.generate()
+    credential_key = cose.EdDSA.from_cryptography_key(
+        Ed25519PrivateKey.generate().public_key()
+    )
+    ca_cert = generate_attestation_ca_cert(ca_key, None)
+    ee_cert = generate_attestation_cert(ee_key.public_key(), ca_cert, ca_key, None)
+
+    rp_id_hash = sha256(b"test_AttestationVerifier.rpid")
+    credential_id = sha256(b"test_AttestationVerifier.credential_id")
+    client_data_hash = sha256(b"test_AttestationVerifier.clientdata")
+    att_obj = generate_packed_attestation_object(
+        credential_key,
+        ee_cert,
+        ee_key,
+        [],
+        rp_id_hash,
+        credential_id,
+        client_data_hash,
+    )
+
+    v = TestAttestationVerifier(ca_cert)
+    v.verify_attestation(att_obj, client_data_hash)
+
+
+def test_AttestationVerifier_mldsa44():
+    from fido2.cose import _mldsa
+
+    if not _mldsa:
+        raise unittest.SkipTest(
+            "MLDSA44 is not supported by this version of cryptography"
+        )
+
+    from cryptography.hazmat.primitives.asymmetric import mldsa
+
+    ca_key = mldsa.MLDSA44PrivateKey.generate()
+    ee_key = mldsa.MLDSA44PrivateKey.generate()
+    credential_key = cose.MLDSA44.from_cryptography_key(
+        mldsa.MLDSA44PrivateKey.generate().public_key()
+    )
+    ca_cert = generate_attestation_ca_cert(ca_key, None)
+    ee_cert = generate_attestation_cert(ee_key.public_key(), ca_cert, ca_key, None)
+
+    rp_id_hash = sha256(b"test_AttestationVerifier.rpid")
+    credential_id = sha256(b"test_AttestationVerifier.credential_id")
+    client_data_hash = sha256(b"test_AttestationVerifier.clientdata")
+
+    att_obj = generate_packed_attestation_object(
+        credential_key, ee_cert, ee_key, [], rp_id_hash, credential_id, client_data_hash
+    )
+
+    v = TestAttestationVerifier(ca_cert)
+    v.verify_attestation(att_obj, client_data_hash)

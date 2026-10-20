@@ -28,9 +28,22 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 
+import datetime
+import os
 import unittest
 
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.serialization import Encoding
+from cryptography.hazmat.primitives.asymmetric.types import (
+    CertificateIssuerPrivateKeyTypes,
+    CertificatePublicKeyTypes,
+    PrivateKeyTypes,
+)
+
 from fido2.utils import hmac_sha256, sha256, websafe_decode, websafe_encode
+from fido2.cose import CoseKey
+from fido2.webauthn import AttestationObject, AuthenticatorData, AttestedCredentialData
 
 
 class TestSha256(unittest.TestCase):
@@ -90,3 +103,100 @@ class TestWebSafe(unittest.TestCase):
         self.assertEqual(websafe_encode(b"foob"), "Zm9vYg")
         self.assertEqual(websafe_encode(b"fooba"), "Zm9vYmE")
         self.assertEqual(websafe_encode(b"foobar"), "Zm9vYmFy")
+
+
+def generate_attestation_ca_cert(
+    ca_key: CertificateIssuerPrivateKeyTypes,
+    hash_alg: hashes.HashAlgorithm | None,
+) -> x509.Certificate:
+    issuer = x509.Name(
+        [
+            x509.NameAttribute(x509.NameOID.COMMON_NAME, "TEST attestation CA"),
+        ]
+    )
+    subject = issuer
+
+    ca_cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(ca_key.public_key())
+        .serial_number(int.from_bytes(os.urandom(16), "big"))
+        .not_valid_before(datetime.datetime.now(datetime.timezone.utc))
+        .not_valid_after(
+            datetime.datetime.now(datetime.timezone.utc)
+            + datetime.timedelta(minutes=10)
+        )
+        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .sign(ca_key, hash_alg)
+    )
+
+    return ca_cert
+
+
+def generate_attestation_cert(
+    public_key: CertificatePublicKeyTypes,
+    ca_cert: x509.Certificate,
+    ca_key: CertificateIssuerPrivateKeyTypes,
+    ca_hash_alg: hashes.HashAlgorithm | None,
+) -> x509.Certificate:
+    subject = x509.Name(
+        [
+            x509.NameAttribute(x509.NameOID.COMMON_NAME, "TEST attestation"),
+            x509.NameAttribute(
+                x509.NameOID.COUNTRY_NAME, "AA"
+            ),  # AA: User-assigned ISO 3166 country code
+            x509.NameAttribute(x509.NameOID.ORGANIZATION_NAME, "Yubico"),
+            x509.NameAttribute(
+                x509.NameOID.ORGANIZATIONAL_UNIT_NAME, "Authenticator Attestation"
+            ),
+        ]
+    )
+
+    att_cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(ca_cert.subject)
+        .public_key(public_key)
+        .serial_number(int.from_bytes(os.urandom(16), "big"))
+        .not_valid_before(datetime.datetime.now(datetime.timezone.utc))
+        .not_valid_after(
+            datetime.datetime.now(datetime.timezone.utc)
+            + datetime.timedelta(minutes=10)
+        )
+        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+        .sign(ca_key, ca_hash_alg)
+    )
+
+    return att_cert
+
+
+def generate_packed_attestation_object(
+    credential_public_key: CoseKey,
+    attestation_cert: x509.Certificate,
+    attestation_key: PrivateKeyTypes,
+    attestation_sign_args: list,
+    rp_id_hash: bytes,
+    credential_id: bytes,
+    client_data_hash: bytes,
+) -> AttestationObject:
+
+    auth_data = AuthenticatorData.create(
+        rp_id_hash,
+        AuthenticatorData.FLAG.AT,
+        0,
+        AttestedCredentialData.create(
+            bytes([0] * 16), credential_id, credential_public_key
+        ),
+    )
+    return AttestationObject.create(
+        "packed",
+        auth_data,
+        {
+            "alg": credential_public_key.ALGORITHM,
+            "sig": attestation_key.sign(
+                auth_data + client_data_hash, *attestation_sign_args
+            ),
+            "x5c": [attestation_cert.public_bytes(Encoding.DER)],
+        },
+    )
