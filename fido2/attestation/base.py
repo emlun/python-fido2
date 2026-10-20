@@ -36,6 +36,14 @@ from typing import Any, Mapping, Sequence, cast
 from cryptography import x509
 from cryptography.exceptions import InvalidSignature as _InvalidSignature
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
+from cryptography.hazmat.primitives.asymmetric.ed448 import Ed448PublicKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.mldsa import (
+    MLDSA44PublicKey,
+    MLDSA65PublicKey,
+    MLDSA87PublicKey,
+)
 
 from ..webauthn import AttestationObject, AuthenticatorData
 
@@ -113,8 +121,39 @@ def verify_x509_chain(chain: list[bytes]) -> None:
     while certs:
         child = cert
         cert = certs.pop(0)
+        pub = cert.public_key()
         try:
-            child.verify_directly_issued_by(cert)
+            if isinstance(pub, rsa.RSAPublicKey):
+                assert child.signature_hash_algorithm is not None  # noqa: S101
+                pub.verify(
+                    child.signature,
+                    child.tbs_certificate_bytes,
+                    padding.PKCS1v15(),
+                    child.signature_hash_algorithm,
+                )
+            elif isinstance(pub, ec.EllipticCurvePublicKey):
+                assert child.signature_hash_algorithm is not None  # noqa: S101
+                pub.verify(
+                    child.signature,
+                    child.tbs_certificate_bytes,
+                    ec.ECDSA(child.signature_hash_algorithm),
+                )
+            elif isinstance(
+                pub,
+                (
+                    Ed25519PublicKey,
+                    Ed448PublicKey,
+                    MLDSA44PublicKey,
+                    MLDSA65PublicKey,
+                    MLDSA87PublicKey,
+                ),
+            ):
+                pub.verify(
+                    child.signature,
+                    child.tbs_certificate_bytes,
+                )
+            else:
+                raise ValueError("Unsupported signature key type")
         except _InvalidSignature:
             raise InvalidSignature()
 
